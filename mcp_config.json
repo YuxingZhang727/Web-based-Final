@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "rednote": {
+      "command": "node",
+      "args": [".mcp/jonafly-rednote-alt/dist/cli.js", "--stdio"]
+    }
+  }
+}
