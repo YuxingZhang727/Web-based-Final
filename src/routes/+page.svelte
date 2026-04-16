@@ -8,78 +8,21 @@
 		'after workout'
 	];
 
-	const starterRecipes = [
-		{
-			id: 'starter-1',
-			name: 'Sparkling Pomelo Jasmine',
-			tagline: 'Bright, lightly floral, and easy to sip in warm weather.',
-			vibe: 'Summer terrace',
-			function: 'Refreshing',
-			taste: 'Citrusy, airy, gently sweet',
-			matchReason:
-				'Matches users asking for something refreshing and not too heavy, with fruit-forward flavor and a clean tea finish.',
-			ingredients: ['jasmine tea', 'pomelo pulp', 'lime juice', 'sparkling water', 'honey'],
-			steps: [
-				'Brew jasmine tea and let it cool.',
-				'Mix pomelo pulp, lime juice, and honey in a glass.',
-				'Add ice, pour in tea, then top with sparkling water.'
-			],
-			signals: ['high save rate on fruit tea posts', 'repeated pairing: pomelo + floral tea', 'popular warm-weather format']
-			,
-			sourceTitle: '',
-			sourceUrl: ''
-		},
-		{
-			id: 'starter-2',
-			name: 'Cold Brew Citrus Tonic',
-			tagline: 'A sharper, more energizing option with cafe-style edges.',
-			vibe: 'Creative work session',
-			function: 'Energizing',
-			taste: 'Zesty, bitter, sparkling',
-			matchReason:
-				'Fits people who want energy without a dessert-like drink, and mirrors social posts combining tonic texture with citrus aroma.',
-			ingredients: ['cold brew coffee', 'orange peel', 'tonic water', 'simple syrup', 'ice'],
-			steps: [
-				'Fill a tall glass with ice.',
-				'Add cold brew and a small amount of syrup.',
-				'Top with tonic water and express orange peel over the drink.'
-			],
-			signals: ['coffee-tonic trend', 'high engagement on bitter-sparkling drinks', 'common garnish pattern: orange peel']
-			,
-			sourceTitle: '',
-			sourceUrl: ''
-		},
-		{
-			id: 'starter-3',
-			name: 'Lychee Mint Green Tea',
-			tagline: 'Soft, cooling, and slightly playful.',
-			vibe: 'Picnic afternoon',
-			function: 'Cooling',
-			taste: 'Juicy, minty, delicate',
-			matchReason:
-				'Works well for users describing a gentle and fruity drink, especially in casual outdoor or daytime contexts.',
-			ingredients: ['green tea', 'lychee syrup', 'fresh mint', 'lemon juice', 'ice'],
-			steps: [
-				'Shake green tea, lychee syrup, and lemon juice with ice.',
-				'Pour into a glass over fresh ice.',
-				'Clap mint leaves to release aroma and add on top.'
-			],
-			signals: ['frequent lychee-fruit tea combinations', 'mint used as freshness cue', 'strong visual appeal in social drink posts']
-			,
-			sourceTitle: '',
-			sourceUrl: ''
-		}
-	];
-
 	let userPrompt = $state(
 		'I want something refreshing, citrusy, and suitable for a summer afternoon.'
 	);
-	let recipes = $state(starterRecipes);
-	let selectedRecipe = $state(starterRecipes[0]);
+	let recipes = $state([]);
+	let selectedRecipe = $state(null);
 	let loading = $state(false);
-	let statusMessage = $state('Ready to search. Right now the page will use demo data until MCP is configured.');
-	let sourceMode = $state('mock');
+	let statusMessage = $state('Ready to search. Generate to fetch source posts and AI recipe suggestions.');
+	let sourceMode = $state('idle');
 	let errorMessage = $state('');
+	let aiSummary = $state(
+		'After retrieval, AI will summarize recurring social patterns and turn them into cleaner recipe suggestions.'
+	);
+	let sourceNotes = $state([]);
+	let searchPlan = $state(null);
+	let expandedNotes = $state({});
 
 	function applyPrompt(chip) {
 		userPrompt = `I want a drink that feels ${chip}.`;
@@ -106,15 +49,26 @@
 
 			const data = await response.json();
 
-			recipes = data.recipes;
-			selectedRecipe = data.recipes[0];
+			recipes = data.aiRecipes?.length ? data.aiRecipes : [];
+			selectedRecipe = (data.aiRecipes?.length ? data.aiRecipes : [])?.[0] || null;
 			statusMessage = data.message;
 			sourceMode = data.mode;
+			aiSummary = data.aiSummary || aiSummary;
+			sourceNotes = data.sourceNotes || [];
+			searchPlan = data.searchPlan || null;
+			expandedNotes = {};
 		} catch (error) {
 			errorMessage = error instanceof Error ? error.message : 'Unknown request error';
 		} finally {
 			loading = false;
 		}
+	}
+
+	function toggleNote(noteId) {
+		expandedNotes = {
+			...expandedNotes,
+			[noteId]: !expandedNotes[noteId]
+		};
 	}
 </script>
 
@@ -150,7 +104,7 @@
 						{loading ? 'Generating...' : 'Generate drink ideas'}
 					</button>
 					<span class:live={sourceMode === 'mcp'} class="source-badge">
-						{sourceMode === 'mcp' ? 'Live MCP mode' : 'Demo mode'}
+						{sourceMode === 'mcp' ? 'Live MCP mode' : sourceMode === 'error' ? 'AI unavailable' : 'Ready'}
 					</span>
 				</div>
 
@@ -200,53 +154,141 @@
 		</div>
 	</section>
 
+	<section class="summary-card">
+		<div class="section-heading">
+			<p class="eyebrow">AI Summary</p>
+			<h2>What the model found in Rednote posts</h2>
+		</div>
+		<p class="summary-copy">{aiSummary}</p>
+		{#if searchPlan}
+			<div class="plan-grid">
+				<div>
+					<p class="summary-meta">English cues</p>
+					<div class="pill-row compact">
+						{#each searchPlan.englishKeywords || [] as keyword}
+							<span>{keyword}</span>
+						{/each}
+					</div>
+				</div>
+				<div>
+					<p class="summary-meta">Search terms sent to Rednote</p>
+					<div class="pill-row compact">
+						{#each searchPlan.searchQueries || [] as keyword}
+							<span>{keyword}</span>
+						{/each}
+					</div>
+				</div>
+			</div>
+		{/if}
+		{#if sourceNotes.length > 0}
+			<p class="summary-meta">Source notes used: {sourceNotes.length}</p>
+		{/if}
+	</section>
+
+	<section class="source-section">
+		<div class="section-heading">
+			<p class="eyebrow">Source Posts</p>
+			<h2>Posts retrieved from Xiaohongshu / Rednote</h2>
+		</div>
+		<div class="source-list">
+			{#if sourceNotes.length > 0}
+				{#each sourceNotes.slice(0, 3) as note}
+					<article class="source-card">
+						<div class="recipe-top">
+							<p>{note.name}</p>
+							<span>{note.function}</span>
+						</div>
+						<p class="tagline">{note.tagline}</p>
+						<p class:expanded={expandedNotes[note.id]} class="source-excerpt">
+							{note.steps?.[0] || note.matchReason}
+						</p>
+						<button type="button" class="expand-button" onclick={() => toggleNote(note.id)}>
+							{expandedNotes[note.id] ? 'Collapse' : 'Expand'}
+						</button>
+						<div class="meta-row">
+							<div>
+								<p class="meta-label">Taste signals</p>
+								<p>{note.taste}</p>
+							</div>
+							<div>
+								<p class="meta-label">Context</p>
+								<p>{note.vibe}</p>
+							</div>
+						</div>
+						{#if note.sourceUrl}
+							<p class="source-link">
+								<a href={note.sourceUrl} target="_blank" rel="noreferrer">
+									View original post
+								</a>
+							</p>
+						{/if}
+					</article>
+				{/each}
+			{:else}
+				<div class="source-card">
+					<p class="empty-copy">No source posts have been parsed yet.</p>
+				</div>
+			{/if}
+		</div>
+	</section>
+
 	<section class="content-grid">
 		<div class="recipe-column">
 			<div class="section-heading">
-				<p class="eyebrow">Recipe Cards</p>
-				<h2>Compare AI-refined drink directions</h2>
+				<p class="eyebrow">AI Recipes</p>
+				<h2>Recipe suggestions generated from the AI summary</h2>
 			</div>
 
 			<div class="recipe-list">
-				{#each recipes as recipe}
-					<button
-						type="button"
-						class:selected={selectedRecipe.id === recipe.id}
-						class="recipe-card"
-						onclick={() => (selectedRecipe = recipe)}
-					>
-						<div class="recipe-top">
-							<p>{recipe.name}</p>
-							<span>{recipe.function}</span>
-						</div>
-						<p class="tagline">{recipe.tagline}</p>
-						<div class="meta-row">
-							<div>
-								<p class="meta-label">Vibe</p>
-								<p>{recipe.vibe}</p>
+				{#if recipes.length > 0}
+					{#each recipes as recipe}
+						<button
+							type="button"
+							class:selected={selectedRecipe?.id === recipe.id}
+							class="recipe-card"
+							onclick={() => (selectedRecipe = recipe)}
+						>
+							<div class="recipe-top">
+								<p>{recipe.name}</p>
+								<span>{recipe.function}</span>
 							</div>
-							<div>
-								<p class="meta-label">Taste</p>
-								<p>{recipe.taste}</p>
+							<p class="tagline">{recipe.tagline}</p>
+							<div class="meta-row">
+								<div>
+									<p class="meta-label">Vibe</p>
+									<p>{recipe.vibe}</p>
+								</div>
+								<div>
+									<p class="meta-label">Taste</p>
+									<p>{recipe.taste}</p>
+								</div>
 							</div>
-						</div>
-					</button>
-				{/each}
+						</button>
+					{/each}
+				{:else}
+					<div class="recipe-card">
+						<p class="empty-copy">No AI recipe suggestions yet. Run a search after Ollama is available.</p>
+					</div>
+				{/if}
 			</div>
 		</div>
 
 		<div class="detail-panel">
 			<div class="section-heading">
 				<p class="eyebrow">Selected Recipe</p>
-				<h2>{selectedRecipe.name}</h2>
+				<h2>{selectedRecipe ? selectedRecipe.name : 'Waiting for AI recipe suggestions'}</h2>
 			</div>
 
-			<p class="detail-copy">{selectedRecipe.matchReason}</p>
+			<p class="detail-copy">
+				{selectedRecipe
+					? selectedRecipe.matchReason
+					: 'Once Ollama generates recipe suggestions, the selected recipe details will appear here.'}
+			</p>
 
 			<div class="detail-block">
 				<h3>Ingredients</h3>
 				<div class="pill-row">
-					{#if selectedRecipe.ingredients.length > 0}
+					{#if selectedRecipe && selectedRecipe.ingredients.length > 0}
 						{#each selectedRecipe.ingredients as ingredient}
 							<span>{ingredient}</span>
 						{/each}
@@ -258,7 +300,7 @@
 
 			<div class="detail-block">
 				<h3>Preparation</h3>
-				{#if selectedRecipe.steps.length > 0}
+				{#if selectedRecipe && selectedRecipe.steps.length > 0}
 					<ol>
 						{#each selectedRecipe.steps as step}
 							<li>{step}</li>
@@ -271,7 +313,7 @@
 
 			<div class="detail-block">
 				<h3>Why AI surfaced this</h3>
-				{#if selectedRecipe.signals.length > 0}
+				{#if selectedRecipe && selectedRecipe.signals.length > 0}
 					<ul>
 						{#each selectedRecipe.signals as signal}
 							<li>{signal}</li>
@@ -282,7 +324,7 @@
 				{/if}
 			</div>
 
-			{#if selectedRecipe.sourceUrl}
+			{#if selectedRecipe?.sourceUrl}
 				<div class="detail-block">
 					<h3>Source Link</h3>
 					<p>
@@ -323,6 +365,7 @@
 	.hero-copy,
 	.hero-card,
 	.overview-card,
+	.summary-card,
 	.recipe-card,
 	.detail-panel {
 		border: 1px solid rgba(72, 54, 29, 0.12);
@@ -407,6 +450,10 @@
 		margin-top: 14px;
 	}
 
+	.pill-row.compact {
+		margin-top: 8px;
+	}
+
 	.chip,
 	.pill-row span,
 	.generate-button,
@@ -428,6 +475,18 @@
 		background: #c96d1b;
 		color: white;
 		cursor: pointer;
+	}
+
+	.expand-button {
+		margin-top: 12px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		color: #9a621d;
+		font: inherit;
+		font-size: 0.92rem;
+		cursor: pointer;
+		text-align: left;
 	}
 
 	.generate-button:disabled {
@@ -491,6 +550,30 @@
 		gap: 20px;
 	}
 
+	.summary-card {
+		margin-top: 24px;
+		padding: 26px;
+	}
+
+	.summary-copy {
+		margin-top: 10px;
+		line-height: 1.75;
+		color: #4f473f;
+	}
+
+	.summary-meta {
+		margin-top: 14px;
+		color: #8b6a42;
+		font-size: 0.92rem;
+	}
+
+	.plan-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 20px;
+		margin-top: 18px;
+	}
+
 	.overview-grid {
 		grid-template-columns: repeat(3, 1fr);
 		margin-top: 20px;
@@ -505,6 +588,44 @@
 		grid-template-columns: 1.05fr 0.95fr;
 		margin-top: 28px;
 		align-items: start;
+	}
+
+	.source-section {
+		margin-top: 28px;
+	}
+
+	.source-list {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 16px;
+		margin-top: 16px;
+	}
+
+	.source-card {
+		border: 1px solid rgba(72, 54, 29, 0.12);
+		border-radius: 24px;
+		background: rgba(255, 252, 246, 0.82);
+		padding: 22px;
+		box-shadow: 0 20px 50px rgba(83, 59, 25, 0.08);
+	}
+
+	.source-excerpt {
+		margin-top: 12px;
+		line-height: 1.65;
+		color: #4f473f;
+		line-clamp: 2;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.source-excerpt.expanded {
+		display: block;
+	}
+
+	.source-link {
+		margin-top: 16px;
 	}
 
 	.recipe-list {
@@ -606,7 +727,9 @@
 	@media (max-width: 920px) {
 		.hero,
 		.content-grid,
-		.overview-grid {
+		.overview-grid,
+		.plan-grid,
+		.source-list {
 			grid-template-columns: 1fr;
 		}
 
@@ -623,6 +746,7 @@
 		.hero-copy,
 		.hero-card,
 		.overview-card,
+		.summary-card,
 		.recipe-card,
 		.detail-panel {
 			border-radius: 22px;
@@ -630,6 +754,7 @@
 
 		.hero-copy,
 		.hero-card,
+		.summary-card,
 		.detail-panel,
 		.recipe-card {
 			padding: 20px;

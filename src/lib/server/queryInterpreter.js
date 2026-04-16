@@ -1,21 +1,5 @@
 // @ts-nocheck
-import { env } from '$env/dynamic/private';
 import { generateStructuredJson } from '$lib/server/llm';
-
-const keywordDictionary = [
-	{ en: ['refreshing', 'refresh'], zh: ['清爽', '解渴', '清新'] },
-	{ en: ['citrus', 'lemon', 'lime', 'orange', 'grapefruit'], zh: ['柠檬', '柑橘', '西柚'] },
-	{ en: ['summer'], zh: ['夏日', '夏天'] },
-	{ en: ['afternoon'], zh: ['下午茶', '午后'] },
-	{ en: ['energizing', 'energy'], zh: ['提神', '醒脑'] },
-	{ en: ['tea', 'tea-based'], zh: ['茶饮', '果茶'] },
-	{ en: ['floral', 'flower'], zh: ['花香', '茉莉', '桂花'] },
-	{ en: ['mint'], zh: ['薄荷'] },
-	{ en: ['coffee'], zh: ['咖啡'] },
-	{ en: ['sweet'], zh: ['甜感'] },
-	{ en: ['light'], zh: ['轻盈', '低负担'] },
-	{ en: ['cold', 'iced'], zh: ['冰饮'] }
-];
 
 export async function buildSearchPlan(fetchFn, userQuery) {
 	const aiPlan = await buildAiPlan(fetchFn, userQuery).catch(() => null);
@@ -23,7 +7,7 @@ export async function buildSearchPlan(fetchFn, userQuery) {
 		return aiPlan;
 	}
 
-	return buildHeuristicPlan(userQuery);
+	return buildEmergencyPlan(userQuery);
 }
 
 async function buildAiPlan(fetchFn, userQuery) {
@@ -38,17 +22,19 @@ async function buildAiPlan(fetchFn, userQuery) {
 
 	const englishKeywords = Array.isArray(parsed.english_keywords) ? parsed.english_keywords.filter(Boolean) : [];
 	const chineseKeywords = Array.isArray(parsed.chinese_keywords) ? parsed.chinese_keywords.filter(Boolean) : [];
-	const searchQueries = Array.isArray(parsed.search_queries) ? parsed.search_queries.filter(Boolean) : [];
+	const searchQueries = Array.isArray(parsed.search_queries)
+		? [...new Set(parsed.search_queries.map((item) => String(item).trim()).filter(Boolean))].slice(0, 5)
+		: [];
 
-	if (searchQueries.length === 0) {
+	if (searchQueries.length < 3) {
 		return null;
 	}
 
 	return {
 		mode: 'ai',
 		originalQuery: userQuery,
-		englishKeywords,
-		chineseKeywords,
+		englishKeywords: [...new Set(englishKeywords.map((item) => String(item).trim()).filter(Boolean))].slice(0, 5),
+		chineseKeywords: [...new Set(chineseKeywords.map((item) => String(item).trim()).filter(Boolean))].slice(0, 8),
 		searchQueries,
 		primaryQuery: searchQueries[0],
 		explanation:
@@ -58,44 +44,17 @@ async function buildAiPlan(fetchFn, userQuery) {
 	};
 }
 
-function buildHeuristicPlan(userQuery) {
-	const normalized = userQuery.toLowerCase();
-	const englishKeywords = [];
-	const chineseKeywords = [];
-
-	for (const entry of keywordDictionary) {
-		if (entry.en.some((word) => normalized.includes(word))) {
-			englishKeywords.push(...entry.en.slice(0, 1));
-			chineseKeywords.push(...entry.zh);
-		}
-	}
-
-	const uniqueEnglish = [...new Set(englishKeywords)];
-	const uniqueChinese = [...new Set(chineseKeywords)];
-
-	const searchQueries = [];
-	if (uniqueChinese.length > 0) {
-		searchQueries.push(uniqueChinese.join(' '));
-	}
-	if (uniqueChinese.length >= 2) {
-		searchQueries.push(uniqueChinese.slice(0, 2).join(' ') + ' 饮品');
-	}
-	if (uniqueEnglish.length > 0) {
-		searchQueries.push(uniqueEnglish.join(' '));
-	}
-	if (searchQueries.length === 0) {
-		searchQueries.push(userQuery);
-	}
-
+function buildEmergencyPlan(userQuery) {
+	const trimmed = userQuery.trim();
 	return {
-		mode: 'heuristic',
+		mode: 'emergency',
 		originalQuery: userQuery,
-		englishKeywords: uniqueEnglish,
-		chineseKeywords: uniqueChinese,
-		searchQueries,
-		primaryQuery: searchQueries[0],
+		englishKeywords: [],
+		chineseKeywords: [],
+		searchQueries: [trimmed],
+		primaryQuery: trimmed,
 		explanation:
-			'The app converted the natural-language prompt into shorter bilingual search keywords before sending it to Rednote.'
+			'AI keyword planning was unavailable, so the app temporarily used the raw user query as the search input.'
 	};
 }
 
@@ -112,11 +71,27 @@ Return only valid JSON with this exact shape:
 
 Rules:
 - Focus on drink discovery.
+- Identify the user's most important drink intent from the sentence, not every descriptive word.
+- Extract only non-redundant keywords that directly matter for the drink search.
+- Prefer concrete beverage-facing concepts over generic adjectives.
+- If the user already names a drink or base ingredient such as matcha, latte, coffee, milk tea, or lemonade, that concept must appear in the output.
+- If two keywords overlap heavily, keep only the more useful one.
+- Prioritize keywords that can help find real drinks: flavor, base, texture, function, season, occasion.
+- Avoid repeating near-synonyms such as "refreshing / fresh / clean" all together.
+- Make the final set feel like 3 to 5 distinct drink-search directions.
 - Translate the intent into short Chinese search phrases suitable for Xiaohongshu.
+- Return exactly 3 to 5 search_queries.
+- Order search_queries from most useful to least useful.
 - Keep search_queries short, usually 2 to 6 Chinese words.
 - Include flavor, function, and context when useful.
 - Avoid full sentences.
-- Prefer beverage-related phrases like 柠檬茶, 清爽饮品, 夏日饮品, 提神果茶.
+- Prefer beverage-related phrases like 柠檬茶, 柑橘气泡饮, 夏日果茶, 提神冷萃, 花香特调.
+- english_keywords should contain only the most important 3 to 5 English concepts.
+- chinese_keywords should contain the most important translated cues, not every possible synonym.
+- search_queries should look like phrases a Rednote user would actually search for drinks.
+- Make search_queries Chinese-first whenever possible.
+- Do not let generic modifiers like "cold", "iced", or "refreshing" replace the actual drink identity.
+- Example: "I need a recipe of iced matcha" should keep "matcha" central and produce phrases like "冰抹茶", "抹茶拿铁", "抹茶饮", not just "cold drink".
 
 User query:
 ${userQuery}`;
