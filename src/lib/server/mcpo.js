@@ -3,6 +3,7 @@ import { env } from '$env/dynamic/private';
 
 const FALLBACK_MCPO_BASE_URL = 'http://127.0.0.1:8000';
 const mcpoBaseUrl = new URL(env.mcpo_base_url || FALLBACK_MCPO_BASE_URL);
+const MCPO_TIMEOUT_MS = 20000;
 
 export function getMcpoSearchPath() {
 	return env.mcpo_search_path || '/rednote/search_notes';
@@ -16,16 +17,19 @@ export async function fetchRednoteViaMcpo(fetchFn, query, count = 3) {
 	const path = getMcpoSearchPath();
 	const keywordField = env.mcpo_keyword_field || 'keywords';
 	const limitField = env.mcpo_limit_field || 'limit';
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), MCPO_TIMEOUT_MS);
 	const response = await fetchFn(`${mcpoBaseUrl.toString().replace(/\/$/, '')}${path}`, {
 		method: 'POST',
 		headers: {
 			'content-type': 'application/json'
 		},
+		signal: controller.signal,
 		body: JSON.stringify({
 			[keywordField]: query,
 			[limitField]: count
 		})
-	});
+	}).finally(() => clearTimeout(timeoutId));
 
 	const text = await response.text();
 
@@ -95,6 +99,12 @@ function parsePossibleObject(payload, query) {
 	}
 
 	if (Array.isArray(payload)) {
+		if (payload.every((item) => typeof item === 'string')) {
+			return payload
+				.flatMap((item, index) => parseMarkdownNotes(item, query, index))
+				.filter(Boolean);
+		}
+
 		return payload.map((item, index) => normalizeObjectRecipe(item, index, query)).filter(Boolean);
 	}
 
@@ -135,7 +145,7 @@ function normalizeObjectRecipe(item, index, query) {
 	};
 }
 
-function parseMarkdownNotes(raw, query) {
+function parseMarkdownNotes(raw, query, baseIndex = 0) {
 	const chunks = raw.includes('## ')
 		? raw
 				.split(/\n(?=##\s+\d+\.)/g)
@@ -146,7 +156,7 @@ function parseMarkdownNotes(raw, query) {
 				.map((chunk) => chunk.trim())
 				.filter(Boolean);
 
-	return chunks.map((chunk, index) => parseMarkdownNote(chunk, query, index)).filter(Boolean);
+	return chunks.map((chunk, index) => parseMarkdownNote(chunk, query, baseIndex + index)).filter(Boolean);
 }
 
 function parseMarkdownNote(blockText, query, index) {
@@ -165,13 +175,18 @@ function parseMarkdownNote(blockText, query, index) {
 	const tagsMatch = cleanedText.match(/\*\*Tags:\*\*\s+([^\n]+)/);
 	const linkMatch = cleanedText.match(/\*\*Original Link:\*\*\s+(https?:\/\/\S+)/);
 
-	const title = chineseTitleMatch?.[1]?.trim() ?? titleMatch?.[1]?.trim();
-	if (!title) {
+	const author = chineseAuthorMatch?.[1]?.trim() ?? authorMatch?.[1]?.trim();
+	const socialContent = chineseContentMatch?.[1]?.trim() ?? contentMatch?.[1]?.trim() ?? '';
+	const derivedTitle =
+		chineseTitleMatch?.[1]?.trim() ??
+		titleMatch?.[1]?.trim() ??
+		socialContent.split('\n').map((line) => line.trim()).find(Boolean)?.slice(0, 24) ??
+		(author ? `${author} shared post` : '');
+	const title = derivedTitle?.trim();
+	if (!title && !socialContent) {
 		return null;
 	}
 
-	const author = chineseAuthorMatch?.[1]?.trim() ?? authorMatch?.[1]?.trim();
-	const socialContent = chineseContentMatch?.[1]?.trim() ?? contentMatch?.[1]?.trim() ?? '';
 	const hashtagTags = socialContent.match(/#([^\s#]+)/g)?.map((tag) => tag.replace(/^#/, '').trim()) ?? [];
 	const tags = tagsMatch
 		? tagsMatch[1]

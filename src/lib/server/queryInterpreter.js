@@ -22,19 +22,24 @@ async function buildAiPlan(fetchFn, userQuery) {
 
 	const englishKeywords = Array.isArray(parsed.english_keywords) ? parsed.english_keywords.filter(Boolean) : [];
 	const chineseKeywords = Array.isArray(parsed.chinese_keywords) ? parsed.chinese_keywords.filter(Boolean) : [];
-	const searchQueries = Array.isArray(parsed.search_queries)
-		? [...new Set(parsed.search_queries.map((item) => String(item).trim()).filter(Boolean))].slice(0, 5)
+	const directSearchQueries = Array.isArray(parsed.search_queries)
+		? [...new Set(parsed.search_queries.map((item) => String(item).trim()).filter(Boolean))].slice(0, 2)
 		: [];
+	const fallbackSearchQueries =
+		directSearchQueries.length > 0
+			? []
+			: [...new Set(chineseKeywords.map((item) => String(item).trim()).filter(Boolean))].slice(0, 2);
+	const searchQueries = directSearchQueries.length > 0 ? directSearchQueries : fallbackSearchQueries;
 
-	if (searchQueries.length < 3) {
+	if (searchQueries.length < 1) {
 		return null;
 	}
 
 	return {
 		mode: 'ai',
 		originalQuery: userQuery,
-		englishKeywords: [...new Set(englishKeywords.map((item) => String(item).trim()).filter(Boolean))].slice(0, 5),
-		chineseKeywords: [...new Set(chineseKeywords.map((item) => String(item).trim()).filter(Boolean))].slice(0, 8),
+		englishKeywords: [...new Set(englishKeywords.map((item) => String(item).trim()).filter(Boolean))].slice(0, 2),
+		chineseKeywords: [...new Set(chineseKeywords.map((item) => String(item).trim()).filter(Boolean))].slice(0, 4),
 		searchQueries,
 		primaryQuery: searchQueries[0],
 		explanation:
@@ -78,15 +83,15 @@ Rules:
 - If two keywords overlap heavily, keep only the more useful one.
 - Prioritize keywords that can help find real drinks: flavor, base, texture, function, season, occasion.
 - Avoid repeating near-synonyms such as "refreshing / fresh / clean" all together.
-- Make the final set feel like 3 to 5 distinct drink-search directions.
+- Make the final set feel like 1 to 2 distinct drink-search directions.
 - Translate the intent into short Chinese search phrases suitable for Xiaohongshu.
-- Return exactly 3 to 5 search_queries.
+- Return exactly 1 or 2 search_queries.
 - Order search_queries from most useful to least useful.
 - Keep search_queries short, usually 2 to 6 Chinese words.
 - Include flavor, function, and context when useful.
 - Avoid full sentences.
 - Prefer beverage-related phrases like 柠檬茶, 柑橘气泡饮, 夏日果茶, 提神冷萃, 花香特调.
-- english_keywords should contain only the most important 3 to 5 English concepts.
+- english_keywords should contain only the most important 1 to 2 English concepts.
 - chinese_keywords should contain the most important translated cues, not every possible synonym.
 - search_queries should look like phrases a Rednote user would actually search for drinks.
 - Make search_queries Chinese-first whenever possible.

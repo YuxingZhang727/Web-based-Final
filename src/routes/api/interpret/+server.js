@@ -14,7 +14,7 @@ function buildPrompt(mode, query, content) {
 	if (mode === 'search-plan') {
 		return {
 			systemPrompt:
-				'You help transform user drink requests into better Xiaohongshu search ideas. Write concise, readable output with short sections.',
+				'You help transform user drink requests into better RedNote search ideas. Write concise, readable output with short sections.',
 			userPrompt: `User query:\n${content}\n\nExplain the flavor intent, function, context, and suggest 3 to 5 better bilingual search phrases for Rednote/Xiaohongshu.`
 		};
 	}

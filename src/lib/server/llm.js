@@ -1,42 +1,63 @@
 // @ts-nocheck
 import { env } from '$env/dynamic/private';
 
-const FALLBACK_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
-const FALLBACK_OLLAMA_MODEL = 'gemma3:1b';
+const FALLBACK_OPENAI_BASE_URL = 'https://api.deepseek.com';
+const FALLBACK_OPENAI_MODEL = 'deepseek-chat';
 
 export async function generateStructuredJson(fetchFn, prompt, schemaDescription) {
-	const ollamaResult = await generateWithOllama(fetchFn, prompt, schemaDescription).catch(() => null);
-	if (ollamaResult) {
-		return ollamaResult;
+	const openaiResult = await generateStructuredJsonWithOpenAI(fetchFn, prompt, schemaDescription).catch(
+		(error) => {
+			console.error('Structured LLM request failed:', error);
+			return null;
+		}
+	);
+	if (openaiResult) {
+		return openaiResult;
 	}
 
 	return null;
 }
 
 export async function generateText(fetchFn, systemPrompt, userPrompt) {
-	const ollamaText = await generateTextWithOllama(fetchFn, systemPrompt, userPrompt).catch(() => null);
-	if (ollamaText) {
-		return ollamaText;
+	const openaiText = await generateTextWithOpenAI(fetchFn, systemPrompt, userPrompt).catch((error) => {
+		console.error('Text LLM request failed:', error);
+		return null;
+	});
+	if (openaiText) {
+		return openaiText;
 	}
 
 	throw new Error(
-		'Ollama request failed. Make sure Ollama is running locally and the selected model is available.'
+		'No API LLM provider responded. Configure DEEPSEEK_API_KEY or OPENAI_API_KEY.'
 	);
 }
 
-async function generateWithOllama(fetchFn, prompt, schemaDescription) {
-	const ollamaBaseUrl = new URL(env.ollama_base_url || FALLBACK_OLLAMA_BASE_URL);
-	const ollamaModel = env.ollama_model || FALLBACK_OLLAMA_MODEL;
-	const response = await fetchFn(`${ollamaBaseUrl.toString().replace(/\/$/, '')}/api/generate`, {
+async function generateStructuredJsonWithOpenAI(fetchFn, prompt, schemaDescription) {
+	const apiKey = env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY;
+	if (!apiKey) {
+		return null;
+	}
+
+	const baseUrl = env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || FALLBACK_OPENAI_BASE_URL;
+	const model = env.DEEPSEEK_MODEL || env.OPENAI_MODEL || FALLBACK_OPENAI_MODEL;
+	const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
 		method: 'POST',
 		headers: {
-			'content-type': 'application/json'
+			'content-type': 'application/json',
+			authorization: `Bearer ${apiKey}`
 		},
 		body: JSON.stringify({
-			model: ollamaModel,
-			stream: false,
-			format: 'json',
-			prompt: `Return only valid JSON. Follow this schema shape: ${schemaDescription}\n\n${prompt}`
+			model,
+			messages: [
+				{
+					role: 'system',
+					content: `Return only valid JSON. Follow this schema shape: ${schemaDescription}`
+				},
+				{
+					role: 'user',
+					content: prompt
+				}
+			]
 		})
 	});
 
@@ -45,21 +66,35 @@ async function generateWithOllama(fetchFn, prompt, schemaDescription) {
 	}
 
 	const data = await response.json();
-	return extractJson(data?.response);
+	return extractJson(data?.choices?.[0]?.message?.content);
 }
 
-async function generateTextWithOllama(fetchFn, systemPrompt, userPrompt) {
-	const ollamaBaseUrl = new URL(env.ollama_base_url || FALLBACK_OLLAMA_BASE_URL);
-	const ollamaModel = env.ollama_model || FALLBACK_OLLAMA_MODEL;
-	const response = await fetchFn(`${ollamaBaseUrl.toString().replace(/\/$/, '')}/api/generate`, {
+async function generateTextWithOpenAI(fetchFn, systemPrompt, userPrompt) {
+	const apiKey = env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY;
+	if (!apiKey) {
+		return null;
+	}
+
+	const baseUrl = env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || FALLBACK_OPENAI_BASE_URL;
+	const model = env.DEEPSEEK_MODEL || env.OPENAI_MODEL || FALLBACK_OPENAI_MODEL;
+	const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
 		method: 'POST',
 		headers: {
-			'content-type': 'application/json'
+			'content-type': 'application/json',
+			authorization: `Bearer ${apiKey}`
 		},
 		body: JSON.stringify({
-			model: ollamaModel,
-			stream: false,
-			prompt: `${systemPrompt}\n\n${userPrompt}`
+			model,
+			messages: [
+				{
+					role: 'system',
+					content: systemPrompt
+				},
+				{
+					role: 'user',
+					content: userPrompt
+				}
+			]
 		})
 	});
 
@@ -68,7 +103,8 @@ async function generateTextWithOllama(fetchFn, systemPrompt, userPrompt) {
 	}
 
 	const data = await response.json();
-	return typeof data?.response === 'string' ? data.response.trim() : null;
+	const content = data?.choices?.[0]?.message?.content;
+	return typeof content === 'string' ? content.trim() : normalizeContentText(content);
 }
 
 function extractJson(content) {
