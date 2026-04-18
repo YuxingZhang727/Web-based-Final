@@ -1,5 +1,7 @@
 <script>
 	// @ts-nocheck
+	import { fade, fly, scale } from 'svelte/transition';
+
 	const promptChips = [
 		'citrusy and refreshing',
 		'iced matcha',
@@ -14,11 +16,11 @@
 	let recipes = $state([]);
 	let selectedRecipe = $state(null);
 	let loading = $state(false);
-	let statusMessage = $state('Ready to search. Generate to fetch source posts and AI recipe suggestions.');
+	let statusMessage = $state('Start with a mood, flavor, or moment, then gather a few directions to explore.');
 	let sourceMode = $state('idle');
 	let errorMessage = $state('');
 	let aiSummary = $state(
-		'After retrieval, AI will summarize recurring social patterns and turn them into cleaner recipe suggestions.'
+		'A short editor’s note will appear here once a few useful posts have been gathered.'
 	);
 	let sourceNotes = $state([]);
 	let searchPlan = $state(null);
@@ -30,6 +32,8 @@
 		posts: 'idle',
 		recipes: 'idle'
 	});
+	let currentStage = $state('input');
+	let currentPostIndex = $state(0);
 
 	function applyPrompt(chip) {
 		userPrompt = `I want a drink that feels ${chip}.`;
@@ -40,8 +44,7 @@
 			sourceNotes = [];
 			recipes = [];
 			selectedRecipe = null;
-			aiSummary =
-				'After retrieval, AI will summarize recurring social patterns and turn them into cleaner recipe suggestions.';
+			aiSummary = 'A short editor’s note will appear here once a few useful posts have been gathered.';
 			resolvedQuery = '';
 			rawSource = '';
 			expandedNotes = {};
@@ -116,6 +119,8 @@
 			expandedNotes = {};
 			if (sourceNotes.length > 0) {
 				stepState.posts = 'done';
+				currentPostIndex = 0;
+				currentStage = 'posts';
 			} else {
 				stepState.posts = 'error';
 				throw new Error('No posts were fetched.');
@@ -162,6 +167,7 @@
 			statusMessage = data.message;
 			if (nextRecipes.length > 0) {
 				stepState.recipes = 'done';
+				currentStage = 'recipe';
 			} else {
 				stepState.recipes = 'error';
 				throw new Error('No recipe suggestions were generated.');
@@ -171,16 +177,6 @@
 			errorMessage = error instanceof Error ? error.message : 'Unknown request error';
 		} finally {
 			loading = false;
-		}
-	}
-
-	async function runAllSteps() {
-		await runSearchPlan();
-		if (stepState.search === 'done') {
-			await runSourcePosts();
-		}
-		if (stepState.posts === 'done') {
-			await runRecipes();
 		}
 	}
 
@@ -194,326 +190,425 @@
 	function countUsefulNotes(notes) {
 		return notes.filter((note) => note.aiUseForRecipe).length;
 	}
+
+	function showSourceInsights() {
+		return stepState.recipes === 'done' || sourceNotes.some((note) => note.aiRecipeCue || note.aiReason || note.aiUseForRecipe);
+	}
+
+	function hasSearchPlan() {
+		return Boolean(searchPlan?.searchQueries?.length);
+	}
+
+	function hasPosts() {
+		return sourceNotes.length > 0;
+	}
+
+	function hasRecipes() {
+		return recipes.length > 0 || stepState.recipes === 'done';
+	}
+
+	function goToStage(stage) {
+		currentStage = stage;
+	}
+
+	function nextPost() {
+		if (!sourceNotes.length) return;
+		currentPostIndex = Math.min(currentPostIndex + 1, sourceNotes.length - 1);
+	}
+
+	function previousPost() {
+		if (!sourceNotes.length) return;
+		currentPostIndex = Math.max(currentPostIndex - 1, 0);
+	}
+
+	function activePost() {
+		return sourceNotes[currentPostIndex] || null;
+	}
+
+	function previousPostCard() {
+		return currentPostIndex > 0 ? sourceNotes[currentPostIndex - 1] : null;
+	}
+
+	function nextPostCard() {
+		return currentPostIndex < sourceNotes.length - 1 ? sourceNotes[currentPostIndex + 1] : null;
+	}
+
+	function stageTitle() {
+		if (currentStage === 'posts') return 'Source browsing';
+		if (currentStage === 'recipe') return 'Recipe page';
+		return 'Request';
+	}
 </script>
 
 <svelte:head>
-	<title>Drink Discovery Interface</title>
+	<title>Field Notes</title>
 	<meta
 		name="description"
-		content="An interactive final project prototype for discovering personalized drink ideas through AI-structured social media recipes."
+		content="A drink discovery interface that turns social inspiration into clear, usable recipe directions."
 	/>
 </svelte:head>
 
 <div class="page-shell">
-	<section class="hero-grid">
-		<div class="hero-copy card">
-			<p class="eyebrow">Final Project Prototype</p>
-			<h1>Social drink research, translated into usable recipes.</h1>
-			<p class="lede">
-				Users describe a mood, flavor, or moment. The app turns that intent into better Rednote search
-				phrases, reviews a small set of source posts, filters for recipe value, and generates a few
-				clear drink directions with AI.
-			</p>
-
-			<div class="composer">
-				<p class="section-label">Describe Your Drink</p>
-				<textarea bind:value={userPrompt} rows="4"></textarea>
-
-				<div class="chip-row">
-					{#each promptChips as chip}
-						<button type="button" class="chip" onclick={() => applyPrompt(chip)}>{chip}</button>
-					{/each}
-				</div>
-
-				<div class="action-row">
-					<button type="button" class="generate-button" onclick={runAllSteps} disabled={loading}>
-						{loading ? 'Working...' : 'Run all steps'}
-					</button>
-					<span class:live={sourceMode === 'mcp'} class="source-badge">
-						{sourceMode === 'mcp'
-							? 'Live MCP mode'
-							: sourceMode === 'partial'
-								? 'Partial result'
-								: sourceMode === 'error'
-									? 'AI unavailable'
-									: 'Ready'}
-					</span>
-				</div>
-
-				<div class="step-row">
-					<button type="button" class="step-button" onclick={runSearchPlan} disabled={loading}>
-						1. Search words
-					</button>
-					<button type="button" class="step-button" onclick={runSourcePosts} disabled={loading}>
-						2. Fetch posts
-					</button>
-					<button type="button" class="step-button" onclick={runRecipes} disabled={loading}>
-						3. Generate recipes
-					</button>
-				</div>
-
-				<div class="step-status-grid">
-					<p class:done={stepState.search === 'done'} class:error={stepState.search === 'error'}>
-						Search: {stepState.search}
-					</p>
-					<p class:done={stepState.posts === 'done'} class:error={stepState.posts === 'error'}>
-						Posts: {stepState.posts}
-					</p>
-					<p class:done={stepState.recipes === 'done'} class:error={stepState.recipes === 'error'}>
-						Recipes: {stepState.recipes}
-					</p>
-				</div>
-
-				<p class="status-copy">{statusMessage}</p>
-				{#if errorMessage}
-					<p class="error-copy">{errorMessage}</p>
-				{/if}
+	<div class="stage-frame">
+		<div class="stage-chrome">
+			<div class="brand-block">
+				<p class="eyebrow">Field Notes</p>
+				<p class="brand-copy">A quieter way to move from a drink idea to a finished recipe.</p>
+			</div>
+			<div class="stage-progress" aria-label="Project stage">
+				<span class:active={currentStage === 'input'}>Request</span>
+				<span class:active={currentStage === 'posts'}>Posts</span>
+				<span class:active={currentStage === 'recipe'}>Recipe</span>
 			</div>
 		</div>
 
-		<div class="hero-side">
-			<div class="flow-card card">
-				<p class="section-label">Workflow</p>
-				<div class="flow-step">
-					<span>01</span>
-					<p>User prompt becomes AI-selected Chinese search phrases.</p>
-				</div>
-				<div class="flow-step">
-					<span>02</span>
-					<p>`mcpo` retrieves 2-3 relevant Rednote posts.</p>
-				</div>
-				<div class="flow-step">
-					<span>03</span>
-					<p>AI judges which posts are actually recipe-useful.</p>
-				</div>
-				<div class="flow-step">
-					<span>04</span>
-					<p>AI synthesizes and refines 3 recipe suggestions.</p>
-				</div>
-			</div>
-
-			<div class="metrics-card card">
-				<p class="section-label">Current Run</p>
-				<div class="metrics-grid">
-					<div>
-						<p class="metric-value">{searchPlan?.searchQueries?.length ?? 0}</p>
-						<p class="metric-label">Search Terms</p>
-					</div>
-					<div>
-						<p class="metric-value">{sourceNotes.length}</p>
-						<p class="metric-label">Posts Read</p>
-					</div>
-					<div>
-						<p class="metric-value">{countUsefulNotes(sourceNotes)}</p>
-						<p class="metric-label">Useful Posts</p>
-					</div>
-					<div>
-						<p class="metric-value">{recipes.length}</p>
-						<p class="metric-label">AI Recipes</p>
-					</div>
-				</div>
-			</div>
-		</div>
-	</section>
-
-	<section class="insight-grid">
-		<div class="summary-card card">
-			<div class="section-heading">
-				<p class="eyebrow">AI Summary</p>
-				<h2>What the model thinks is worth cooking with</h2>
-			</div>
-			<p class="summary-copy">{aiSummary}</p>
-		</div>
-
-		<div class="plan-card card">
-			<div class="section-heading">
-				<p class="eyebrow">Search Plan</p>
-				<h2>AI-selected search directions</h2>
-			</div>
-			{#if searchPlan}
-				<div class="plan-stack">
-					<div>
-						<p class="plan-label">Chinese search phrases</p>
-						<div class="pill-row compact">
-							{#each searchPlan.searchQueries || [] as keyword}
-								<span>{keyword}</span>
-							{/each}
+		{#key currentStage}
+			{#if currentStage === 'input'}
+				<section class="stage-view input-stage" in:fade={{ duration: 240 }} out:fade={{ duration: 180 }}>
+					<section class="composer-card card landing-card">
+						<div class="landing-copy">
+							<h1>Find a drink that fits the moment.</h1>
+							<p class="lede">
+								Describe a flavor, a mood, or a time of day. Start with a short prompt, then move
+								into a focused browsing view for source posts and a more refined recipe page later on.
+							</p>
 						</div>
-					</div>
-					{#if searchPlan.chineseKeywords?.length}
-						<div>
-							<p class="plan-label">Intent cues</p>
-							<div class="pill-row compact">
-								{#each searchPlan.chineseKeywords || [] as keyword}
-									<span>{keyword}</span>
+
+						<div class="composer">
+							<p class="section-label">Describe The Kind Of Drink You Want</p>
+							<textarea bind:value={userPrompt} rows="4"></textarea>
+
+							<div class="chip-row chip-grid">
+								{#each promptChips as chip}
+									<button type="button" class="chip" onclick={() => applyPrompt(chip)}>{chip}</button>
 								{/each}
 							</div>
-						</div>
-					{/if}
-				</div>
-			{:else}
-				<p class="empty-copy">Search planning will appear after you run a query.</p>
-			{/if}
-		</div>
-	</section>
 
-	<section class="research-section">
-		<div class="section-heading">
-			<p class="eyebrow">Source Research</p>
-			<h2>Posts from Xiaohongshu / Rednote, paired with AI judgment</h2>
-		</div>
+							<div class="input-actions">
+								<div class="action-stack">
+									<button type="button" class="module-button primary-button" onclick={runSourcePosts} disabled={loading}>
+										{stepState.posts === 'loading' ? 'Fetching posts…' : 'Fetch posts'}
+									</button>
+									<p class:done={stepState.posts === 'done'} class:error={stepState.posts === 'error'} class="step-inline-status">
+										Posts: {stepState.posts}
+									</p>
+								</div>
 
-		<div class="source-list">
-			{#if sourceNotes.length > 0}
-				{#each sourceNotes.slice(0, 3) as note}
-					<article class="source-card card">
-						<div class="source-header">
-							<div>
-								<p class="source-title">{note.name}</p>
-								<p class="source-tagline">{note.tagline}</p>
+								<div class="action-stack secondary-stack">
+									<button type="button" class="module-button subtle-button" onclick={runSearchPlan} disabled={loading}>
+										{stepState.search === 'loading' ? 'Working…' : 'Find search terms'}
+									</button>
+									<p class:done={stepState.search === 'done'} class:error={stepState.search === 'error'} class="step-inline-status">
+										Search: {stepState.search}
+									</p>
+								</div>
 							</div>
-							<span class:useful={note.aiUseForRecipe} class="judgement-pill">
-								{note.aiUseForRecipe ? 'Useful for recipe' : 'Low recipe value'}
-							</span>
-						</div>
 
-						<div class="source-dual">
-							<div class="source-column">
-								<p class="sub-label">Post Excerpt</p>
-								<p class:expanded={expandedNotes[note.id]} class="source-excerpt">
-									{note.steps?.[0] || note.matchReason}
+							{#if hasSearchPlan()}
+								<div class="plan-card inline-plan" in:fade={{ duration: 220 }}>
+									<div class="section-heading">
+										<p class="eyebrow">Search Terms</p>
+										<h2>The phrases used to look for drinks</h2>
+									</div>
+									<div class="plan-stack">
+										<div>
+											<p class="plan-label">Search phrases</p>
+											<div class="pill-row compact">
+												{#each searchPlan.searchQueries || [] as keyword}
+													<span>{keyword}</span>
+												{/each}
+											</div>
+										</div>
+										{#if searchPlan.subredditCandidates?.length}
+											<div>
+												<p class="plan-label">Communities</p>
+												<div class="pill-row compact">
+													{#each searchPlan.subredditCandidates || [] as subreddit}
+														<span>r/{subreddit}</span>
+													{/each}
+												</div>
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/if}
+
+							<div class="status-ribbon">
+								<span class:live={sourceMode === 'mcp'} class="source-badge">
+									{sourceMode === 'mcp'
+										? 'Live Reddit source'
+										: sourceMode === 'partial'
+											? 'Partial result'
+											: sourceMode === 'error'
+												? 'Unavailable'
+												: 'Ready'}
+								</span>
+								<p class="status-copy">{statusMessage}</p>
+							</div>
+							{#if errorMessage}
+								<p class="error-copy">{errorMessage}</p>
+							{/if}
+						</div>
+					</section>
+				</section>
+			{:else if currentStage === 'posts'}
+				<section class="stage-view posts-stage" in:fly={{ y: 18, duration: 260 }} out:fade={{ duration: 180 }}>
+					<div class="posts-stage-shell">
+						<div class="posts-stage-top">
+							<div class="section-heading">
+								<p class="eyebrow">Source Posts</p>
+								<h2>Browse reference posts one at a time</h2>
+								<p class="section-support">
+									Move through the stack, keep the useful cues, then turn the strongest direction into a cleaner recipe page.
 								</p>
-								<button type="button" class="expand-button" onclick={() => toggleNote(note.id)}>
-									{expandedNotes[note.id] ? 'Collapse' : 'Expand'}
+							</div>
+							<div class="top-actions">
+								<button type="button" class="ghost-button" onclick={() => goToStage('input')}>
+									Edit request
 								</button>
-							</div>
-
-							<div class="ai-note-panel">
-								<p class="sub-label">AI Read</p>
-								<p class="ai-note-copy"><strong>Cue:</strong> {note.aiRecipeCue || 'No strong recipe cue extracted.'}</p>
-								<p class="ai-note-copy"><strong>Why:</strong> {note.aiReason || 'No explanation returned yet.'}</p>
+								<div class="module-action compact">
+									<button type="button" class="module-button" onclick={runRecipes} disabled={loading}>
+										{stepState.recipes === 'loading' ? 'Building recipe…' : 'Build recipe'}
+									</button>
+									<p class:done={stepState.recipes === 'done'} class:error={stepState.recipes === 'error'} class="step-inline-status">
+										Recipes: {stepState.recipes}
+									</p>
+								</div>
 							</div>
 						</div>
 
-						<div class="source-meta">
-							<div>
-								<p class="sub-label">Taste Signals</p>
-								<p>{note.taste}</p>
-							</div>
-							<div>
-								<p class="sub-label">Context</p>
-								<p>{note.vibe}</p>
+						<div class="posts-stage-center">
+							<div class="card-stack-shell">
+								{#if previousPostCard()}
+									<div class="stack-card ghost previous-card">
+										<span class="stack-caption">Previous</span>
+										<p>{previousPostCard().name}</p>
+									</div>
+								{/if}
+
+								{#if activePost()}
+									<article class="source-focus-card card" in:scale={{ duration: 220, start: 0.96 }}>
+										<div class="focus-head">
+											<div>
+												<p class="eyebrow">Post {currentPostIndex + 1} of {sourceNotes.length}</p>
+												<h3>{activePost().name}</h3>
+												<p class="focus-tagline">{activePost().tagline}</p>
+											</div>
+											<p class="focus-context">{activePost().vibe}</p>
+										</div>
+
+										<div class="focus-body">
+											<div class="source-column">
+												<p class="sub-label">Excerpt</p>
+												<div class:expanded={expandedNotes[activePost().id]} class="source-excerpt large">
+													{activePost().steps?.[0] || activePost().matchReason}
+												</div>
+												<button type="button" class="expand-button" onclick={() => toggleNote(activePost().id)}>
+													{expandedNotes[activePost().id] ? 'Collapse' : 'Expand'}
+												</button>
+											</div>
+
+											<div class="focus-meta-grid">
+												<div>
+													<p class="sub-label">Taste Signals</p>
+													<p>{activePost().taste}</p>
+												</div>
+												<div>
+													<p class="sub-label">Community</p>
+													<p>{activePost().vibe}</p>
+												</div>
+											</div>
+
+											{#if activePost().comments?.length}
+												<div class="comment-preview">
+													<p class="sub-label">Comments</p>
+													{#each activePost().comments.slice(0, 3) as comment}
+														<p class="comment-line">
+															{comment.author ? `${comment.author}: ` : ''}{comment.content}
+														</p>
+													{/each}
+												</div>
+											{/if}
+										</div>
+
+										<div class="focus-footer">
+											<div class="pager">
+												<button type="button" class="ghost-button" onclick={previousPost} disabled={currentPostIndex === 0}>
+													Previous
+												</button>
+												<button
+													type="button"
+													class="ghost-button"
+													onclick={nextPost}
+													disabled={currentPostIndex >= sourceNotes.length - 1}
+												>
+													Next
+												</button>
+											</div>
+
+											{#if activePost().sourceUrl}
+												<a class="focus-link" href={activePost().sourceUrl} target="_blank" rel="noreferrer">
+													View original post
+												</a>
+											{/if}
+										</div>
+									</article>
+								{/if}
+
+								{#if nextPostCard()}
+									<div class="stack-card ghost next-card">
+										<span class="stack-caption">Next</span>
+										<p>{nextPostCard().name}</p>
+									</div>
+								{/if}
 							</div>
 						</div>
-
-						{#if note.sourceUrl}
-							<p class="source-link">
-								<a href={note.sourceUrl} target="_blank" rel="noreferrer">View original post</a>
-							</p>
-						{/if}
-					</article>
-				{/each}
-			{:else}
-				<div class="source-card card">
-					<p class="empty-copy">No source posts have been parsed yet.</p>
-				</div>
-			{/if}
-		</div>
-	</section>
-
-	<section class="recipe-grid">
-		<div class="recipe-column">
-			<div class="section-heading">
-				<p class="eyebrow">AI Recipes</p>
-				<h2>Refined directions generated from useful posts</h2>
-			</div>
-
-			<div class="recipe-list">
-				{#if recipes.length > 0}
-					{#each recipes as recipe}
-						<button
-							type="button"
-							class:selected={selectedRecipe?.id === recipe.id}
-							class="recipe-card card"
-							onclick={() => (selectedRecipe = recipe)}
-						>
-							<div class="recipe-top">
-								<p>{recipe.name}</p>
-								<span>{recipe.function}</span>
-							</div>
-							<p class="tagline">{recipe.tagline}</p>
-							<div class="recipe-meta">
-								<div>
-									<p class="sub-label">Vibe</p>
-									<p>{recipe.vibe}</p>
-								</div>
-								<div>
-									<p class="sub-label">Taste</p>
-									<p>{recipe.taste}</p>
-								</div>
-							</div>
-						</button>
-					{/each}
-				{:else}
-					<div class="recipe-card card">
-						<p class="empty-copy">No AI recipe suggestions yet. Generate a search to populate this area.</p>
 					</div>
-				{/if}
-			</div>
-		</div>
+				</section>
+			{:else}
+				<section class="stage-view recipe-stage" in:fly={{ y: 18, duration: 260 }} out:fade={{ duration: 180 }}>
+					<div class="recipe-stage-top">
+						<div class="section-heading">
+							<p class="eyebrow">Recipe Page</p>
+							<h2>A more complete drink page shaped from the source posts</h2>
+							<p class="section-support">
+								The final page keeps the exploratory feel of the source material, but turns it into something easier to read and actually make.
+							</p>
+						</div>
+						<div class="top-actions">
+							<button type="button" class="ghost-button" onclick={() => goToStage('posts')}>
+								Back to posts
+							</button>
+						</div>
+					</div>
 
-		<div class="detail-panel card">
-			<div class="section-heading">
-				<p class="eyebrow">Selected Recipe</p>
-				<h2>{selectedRecipe ? selectedRecipe.name : 'Waiting for AI recipe suggestions'}</h2>
-			</div>
+					<section class="summary-section">
+						<div class="summary-card card">
+							<div class="section-heading">
+								<p class="eyebrow">Editor’s Note</p>
+								<h2>The direction emerging from the source posts</h2>
+							</div>
+							<p class="summary-copy">{aiSummary}</p>
 
-			<p class="detail-copy">
-				{selectedRecipe
-					? selectedRecipe.matchReason
-					: 'Once AI recipes are generated, the selected recipe details will appear here.'}
-			</p>
+							<div class="summary-meta">
+								<div>
+									<p class="plan-label">Current source</p>
+									<p class="summary-meta-copy">{resolvedQuery || 'No source phrase has been used yet.'}</p>
+								</div>
+								<div>
+									<p class="plan-label">Status</p>
+									<p class="summary-meta-copy">{statusMessage}</p>
+								</div>
+							</div>
+						</div>
+					</section>
 
-			<div class="detail-block">
-				<h3>Ingredients</h3>
-				<div class="pill-row">
-					{#if selectedRecipe?.ingredients?.length}
-						{#each selectedRecipe.ingredients as ingredient}
-							<span>{ingredient}</span>
-						{/each}
-					{:else}
-						<p class="empty-copy">No ingredients available yet.</p>
-					{/if}
-				</div>
-			</div>
+					<section class="recipe-grid">
+						<div class="recipe-column">
+							<div class="section-heading">
+								<p class="eyebrow">Recipe Directions</p>
+								<h2>Choose a final direction</h2>
+							</div>
 
-			<div class="detail-block">
-				<h3>Preparation</h3>
-				{#if selectedRecipe?.steps?.length}
-					<ol>
-						{#each selectedRecipe.steps as step}
-							<li>{step}</li>
-						{/each}
-					</ol>
-				{:else}
-					<p class="empty-copy">No preparation steps available yet.</p>
-				{/if}
-			</div>
+							<div class="recipe-list">
+								{#if recipes.length > 0}
+									{#each recipes as recipe}
+										<button
+											type="button"
+											class:selected={selectedRecipe?.id === recipe.id}
+											class="recipe-card card"
+											onclick={() => (selectedRecipe = recipe)}
+										>
+											<div class="recipe-top">
+												<p>{recipe.name}</p>
+												<span>{recipe.function}</span>
+											</div>
+											<p class="tagline">{recipe.tagline}</p>
+											<div class="recipe-meta">
+												<div>
+													<p class="sub-label">Vibe</p>
+													<p>{recipe.vibe}</p>
+												</div>
+												<div>
+													<p class="sub-label">Taste</p>
+													<p>{recipe.taste}</p>
+												</div>
+											</div>
+										</button>
+									{/each}
+								{/if}
+							</div>
+						</div>
 
-			<div class="detail-block">
-				<h3>Why This One</h3>
-				{#if selectedRecipe?.signals?.length}
-					<ul>
-						{#each selectedRecipe.signals as signal}
-							<li>{signal}</li>
-						{/each}
-					</ul>
-				{:else}
-					<p class="empty-copy">No supporting signals available yet.</p>
-				{/if}
-			</div>
-		</div>
-	</section>
+						<div class="detail-panel card cookbook-page">
+							<div class="recipe-page-head">
+								<p class="eyebrow">Selected Drink</p>
+								<h2>{selectedRecipe ? selectedRecipe.name : 'Choose a recipe card to view the details'}</h2>
+								<p class="detail-copy">
+									{selectedRecipe
+										? selectedRecipe.matchReason
+										: 'Once recipe ideas are ready, the full ingredients and preparation notes will appear here.'}
+								</p>
+							</div>
+
+							<div class="recipe-page-grid">
+								<div class="detail-block ingredient-block">
+									<h3>Ingredients</h3>
+									<div class="pill-row ingredient-pills">
+										{#if selectedRecipe?.ingredients?.length}
+											{#each selectedRecipe.ingredients as ingredient}
+												<span>{ingredient}</span>
+											{/each}
+										{:else}
+											<p class="empty-copy">Ingredients will appear here once a recipe is selected.</p>
+										{/if}
+									</div>
+								</div>
+
+								<div class="detail-block profile-block">
+									<h3>Taste & Profile</h3>
+									{#if selectedRecipe}
+										<ul class="profile-list">
+											<li>{selectedRecipe.taste}</li>
+											<li>{selectedRecipe.vibe}</li>
+											<li>{selectedRecipe.function}</li>
+										</ul>
+									{:else}
+										<p class="empty-copy">Flavor notes will appear here once a recipe is selected.</p>
+									{/if}
+								</div>
+							</div>
+
+							<div class="detail-block">
+								<h3>Preparation</h3>
+								{#if selectedRecipe?.steps?.length}
+									<ol class="recipe-steps">
+										{#each selectedRecipe.steps as step}
+											<li>{step}</li>
+										{/each}
+									</ol>
+								{:else}
+									<p class="empty-copy">Preparation steps will appear here once a recipe is selected.</p>
+								{/if}
+							</div>
+
+							<div class="detail-block">
+								<h3>Inspired By These Posts</h3>
+								<div class="inspiration-list">
+									{#each sourceNotes.slice(0, 3) as note}
+										<div class="inspiration-chip">
+											<p>{note.name}</p>
+											<span>{note.vibe}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						</div>
+					</section>
+				</section>
+			{/if}
+		{/key}
+	</div>
 </div>
 
 <style>
@@ -533,6 +628,71 @@
 		padding: 48px 24px 80px;
 	}
 
+	.stage-frame {
+		position: relative;
+		min-height: calc(100vh - 96px);
+	}
+
+	.stage-chrome {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 18px;
+		margin-bottom: 18px;
+	}
+
+	.brand-block {
+		display: grid;
+		gap: 6px;
+	}
+
+	.brand-copy {
+		color: #6b5c4c;
+		font-size: 0.95rem;
+		line-height: 1.5;
+		max-width: 34ch;
+	}
+
+	.stage-view {
+		min-height: calc(100vh - 150px);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+	}
+
+	.posts-stage,
+	.recipe-stage {
+		justify-content: flex-start;
+	}
+
+	.stage-progress {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		border-radius: 999px;
+		background: rgba(255, 248, 236, 0.78);
+		border: 1px solid rgba(72, 54, 29, 0.08);
+		backdrop-filter: blur(10px);
+	}
+
+	.stage-progress span {
+		padding: 8px 12px;
+		border-radius: 999px;
+		font-size: 0.85rem;
+		color: #7f6950;
+		transition:
+			background 0.22s ease,
+			color 0.22s ease,
+			transform 0.22s ease;
+	}
+
+	.stage-progress span.active {
+		background: rgba(201, 109, 27, 0.12);
+		color: #7a4210;
+		transform: translateY(-1px);
+	}
+
 	.card {
 		border: 1px solid rgba(72, 54, 29, 0.12);
 		border-radius: 28px;
@@ -543,8 +703,7 @@
 
 	.eyebrow,
 	.section-label,
-	.sub-label,
-	.metric-label {
+	.sub-label {
 		text-transform: uppercase;
 		letter-spacing: 0.12em;
 		font-size: 0.72rem;
@@ -559,48 +718,43 @@
 		margin: 0;
 	}
 
-	.hero-grid {
-		display: grid;
-		grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
-		gap: 24px;
-		align-items: stretch;
-	}
-
-	.hero-copy {
+	.composer-card,
+	.summary-card,
+	.recipe-card,
+	.detail-panel {
 		padding: 34px;
 	}
 
+	.landing-card {
+		max-width: 860px;
+		margin: 0 auto;
+	}
+
+	.landing-copy {
+		display: grid;
+		gap: 14px;
+	}
+
 	h1 {
-		font-size: clamp(3rem, 6vw, 5.4rem);
-		line-height: 0.95;
+		font-size: clamp(2rem, 3.8vw, 3.1rem);
+		line-height: 1;
 		letter-spacing: -0.05em;
-		max-width: 9ch;
+		max-width: 14ch;
 	}
 
 	.lede {
-		margin-top: 20px;
-		max-width: 62ch;
-		line-height: 1.7;
+		max-width: 70ch;
+		line-height: 1.58;
 		color: #53483d;
 	}
 
-	.hero-side {
+	.composer-card {
 		display: grid;
-		gap: 20px;
-	}
-
-	.flow-card,
-	.metrics-card,
-	.summary-card,
-	.plan-card,
-	.source-card,
-	.recipe-card,
-	.detail-panel {
-		padding: 26px;
+		gap: 14px;
 	}
 
 	.composer {
-		margin-top: 30px;
+		margin-top: 6px;
 		padding: 22px;
 		border-radius: 22px;
 		background: rgba(255, 246, 231, 0.95);
@@ -623,48 +777,27 @@
 	textarea:focus,
 	.chip:focus,
 	.recipe-card:focus,
-	.generate-button:focus,
+	.module-button:focus,
 	.expand-button:focus {
 		outline: 2px solid #d18e3a;
 		outline-offset: 2px;
 	}
 
 	.chip-row,
-	.pill-row,
-	.action-row {
+	.pill-row {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 10px;
 		margin-top: 14px;
 	}
 
-	.step-row {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 10px;
-		margin-top: 12px;
-	}
-
 	.pill-row span,
 	.chip,
-	.generate-button,
-	.source-badge,
-	.judgement-pill {
+	.source-badge {
 		border-radius: 999px;
 		padding: 10px 14px;
 		font: inherit;
 		font-size: 0.92rem;
-	}
-
-	.step-button {
-		border-radius: 16px;
-		padding: 12px 14px;
-		font: inherit;
-		font-size: 0.92rem;
-		border: 1px solid rgba(72, 54, 29, 0.12);
-		background: #fffaf1;
-		color: #493b2c;
-		cursor: pointer;
 	}
 
 	.chip {
@@ -673,19 +806,61 @@
 		cursor: pointer;
 	}
 
-	.generate-button {
+	.chip-grid {
+		gap: 12px;
+	}
+
+	.input-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 14px;
+		margin-top: 20px;
+		align-items: flex-start;
+	}
+
+	.action-stack {
+		display: grid;
+		gap: 6px;
+	}
+
+	.secondary-stack {
+		opacity: 0.88;
+	}
+
+	.module-action {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 8px;
+	}
+
+	.module-button {
 		border: none;
+		border-radius: 999px;
+		padding: 12px 18px;
+		font: inherit;
+		font-size: 0.94rem;
 		background: #c96d1b;
 		color: white;
 		cursor: pointer;
+		box-shadow: 0 14px 28px rgba(167, 94, 24, 0.16);
+		white-space: nowrap;
 	}
 
-	.generate-button:disabled {
-		opacity: 0.7;
-		cursor: wait;
+	.primary-button {
+		padding-inline: 24px;
+		font-size: 1rem;
+		box-shadow: 0 18px 36px rgba(167, 94, 24, 0.2);
 	}
 
-	.step-button:disabled {
+	.subtle-button {
+		background: rgba(255, 248, 236, 0.95);
+		color: #6d5635;
+		border: 1px solid rgba(72, 54, 29, 0.1);
+		box-shadow: none;
+	}
+
+	.module-button:disabled {
 		opacity: 0.7;
 		cursor: wait;
 	}
@@ -706,27 +881,30 @@
 		line-height: 1.6;
 	}
 
-	.step-status-grid {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 10px;
-		margin-top: 12px;
+	.inline-plan {
+		margin-top: 18px;
+		padding: 18px;
+		border-radius: 18px;
+		background: rgba(255, 253, 248, 0.85);
+		border: 1px solid rgba(72, 54, 29, 0.08);
 	}
 
-	.step-status-grid p {
+	.step-inline-status {
+		margin-top: 8px;
 		padding: 10px 12px;
 		border-radius: 14px;
 		background: rgba(255, 248, 236, 0.95);
 		color: #6f5532;
 		font-size: 0.9rem;
+		width: fit-content;
 	}
 
-	.step-status-grid p.done {
+	.step-inline-status.done {
 		background: #dcefe8;
 		color: #21664d;
 	}
 
-	.step-status-grid p.error {
+	.step-inline-status.error {
 		background: #f8dfdb;
 		color: #9b3d31;
 	}
@@ -739,43 +917,18 @@
 		color: #a63d2e;
 	}
 
-	.flow-step {
+	.summary-meta {
+		margin-top: 22px;
+		padding-top: 18px;
+		border-top: 1px solid rgba(72, 54, 29, 0.09);
 		display: grid;
-		grid-template-columns: 46px 1fr;
-		gap: 14px;
-		align-items: center;
-		padding: 14px 0;
-		border-top: 1px solid rgba(72, 54, 29, 0.08);
-	}
-
-	.flow-step:first-of-type {
-		border-top: none;
-		padding-top: 0;
-	}
-
-	.flow-step span {
-		font-size: 1.4rem;
-		color: #bc7a28;
-	}
-
-	.metrics-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 16px;
-		margin-top: 10px;
 	}
 
-	.metric-value {
-		font-size: 2rem;
-		font-weight: 700;
-		color: #2d2419;
-	}
-
-	.insight-grid {
-		display: grid;
-		grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-		gap: 20px;
-		margin-top: 24px;
+	.summary-meta-copy {
+		line-height: 1.6;
+		color: #5a4d3f;
+		margin-top: 4px;
 	}
 
 	.section-heading h2 {
@@ -787,6 +940,13 @@
 		margin-top: 12px;
 		line-height: 1.78;
 		color: #4f473f;
+	}
+
+	.section-support {
+		margin-top: 10px;
+		max-width: 56ch;
+		line-height: 1.62;
+		color: #5d5246;
 	}
 
 	.plan-stack {
@@ -806,76 +966,199 @@
 		margin-top: 0;
 	}
 
-	.research-section,
+	.summary-section,
 	.recipe-grid {
 		margin-top: 28px;
 	}
 
-	.source-list {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 18px;
-		margin-top: 16px;
+	.posts-stage-shell,
+	.recipe-stage {
+		width: 100%;
 	}
 
-	.source-header,
+	.posts-stage-top,
+	.recipe-stage-top {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 18px;
+		margin-bottom: 24px;
+	}
+
+	.top-actions {
+		display: flex;
+		align-items: flex-start;
+		gap: 12px;
+	}
+
+	.ghost-button {
+		border: 1px solid rgba(72, 54, 29, 0.14);
+		background: rgba(255, 252, 246, 0.8);
+		color: #6d5635;
+		padding: 12px 16px;
+		border-radius: 999px;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.posts-stage-center {
+		position: relative;
+		min-height: 560px;
+		display: grid;
+		place-items: center;
+	}
+
+	.card-stack-shell {
+		position: relative;
+		width: min(100%, 980px);
+		min-height: 560px;
+		display: grid;
+		place-items: center;
+	}
+
+	.stack-card {
+		position: absolute;
+		top: 50%;
+		width: 260px;
+		min-height: 360px;
+		padding: 24px;
+		border-radius: 28px;
+		border: 1px solid rgba(72, 54, 29, 0.08);
+		background: rgba(255, 248, 238, 0.55);
+		color: #7b6444;
+		display: grid;
+		align-content: end;
+		transform: translateY(-50%);
+		box-shadow: 0 18px 36px rgba(83, 59, 25, 0.08);
+		pointer-events: none;
+	}
+
+	.stack-card p {
+		font-size: 1rem;
+		line-height: 1.4;
+		overflow-wrap: anywhere;
+	}
+
+	.stack-caption {
+		display: inline-block;
+		margin-bottom: 14px;
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: #9a7c58;
+	}
+
+	.previous-card {
+		left: 2%;
+		transform: translateY(-50%) rotate(-6deg) scale(0.92);
+	}
+
+	.next-card {
+		right: 2%;
+		transform: translateY(-50%) rotate(6deg) scale(0.92);
+	}
+
+	.source-focus-card {
+		position: relative;
+		z-index: 2;
+		width: min(100%, 720px);
+		min-height: 560px;
+		display: grid;
+		gap: 18px;
+		align-content: start;
+		background:
+			linear-gradient(180deg, rgba(255, 252, 246, 0.96), rgba(247, 239, 227, 0.94)),
+			rgba(255, 252, 246, 0.84);
+	}
+
+	.focus-head {
+		display: grid;
+		gap: 10px;
+	}
+
+	.focus-head h3 {
+		font-size: clamp(1.8rem, 2.8vw, 2.5rem);
+		line-height: 1.05;
+		letter-spacing: -0.03em;
+		overflow-wrap: anywhere;
+	}
+
+	.focus-tagline,
+	.focus-context {
+		color: #5c5144;
+		line-height: 1.6;
+	}
+
+	.focus-body {
+		display: grid;
+		gap: 18px;
+	}
+
+	.focus-body > * {
+		min-width: 0;
+	}
+
+	.focus-meta-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 16px;
+		padding-top: 4px;
+	}
+
+	.focus-footer {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 16px;
+		padding-top: 6px;
+	}
+
+	.pager {
+		display: flex;
+		gap: 10px;
+	}
+
+	.focus-link {
+		color: #7f4f16;
+		text-decoration: none;
+	}
+
 	.recipe-top,
-	.recipe-meta,
-	.source-meta {
+	.recipe-meta {
 		display: flex;
 		justify-content: space-between;
 		gap: 16px;
 	}
 
-	.source-title,
 	.recipe-top p {
 		font-size: 1.25rem;
 		font-weight: 700;
+		overflow-wrap: anywhere;
 	}
 
-	.source-tagline,
 	.tagline {
 		margin-top: 10px;
 		line-height: 1.6;
 		color: #5e5449;
+		overflow-wrap: anywhere;
 	}
 
-	.judgement-pill {
-		align-self: start;
-		background: #fff3de;
-		color: #9a621d;
-		white-space: nowrap;
-	}
-
-	.judgement-pill.useful {
-		background: #dcefe8;
-		color: #21664d;
-	}
-
-	.source-dual {
-		display: grid;
-		grid-template-columns: 1.1fr 0.95fr;
-		gap: 16px;
-		margin-top: 14px;
-	}
-
-	.source-column,
-	.ai-note-panel {
+	.source-column {
 		min-width: 0;
 	}
 
 	.source-excerpt {
 		line-height: 1.68;
 		color: #4f473f;
-		line-clamp: 2;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
+		max-height: 6.8em;
+		overflow: auto;
+		padding-right: 4px;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 	}
 
 	.source-excerpt.expanded {
-		display: block;
+		max-height: 16em;
 	}
 
 	.expand-button {
@@ -889,31 +1172,26 @@
 		cursor: pointer;
 	}
 
-	.ai-note-panel {
-		padding: 16px;
-		border-radius: 18px;
-		background: rgba(255, 244, 226, 0.95);
-		border: 1px solid rgba(72, 54, 29, 0.08);
-	}
-
-	.ai-note-copy {
-		margin-top: 6px;
-		line-height: 1.58;
-		color: #4f473f;
-	}
-
-	.source-meta {
+	.comment-preview {
 		margin-top: 16px;
+		padding-top: 14px;
+		border-top: 1px solid rgba(72, 54, 29, 0.08);
+		max-height: 180px;
+		overflow: auto;
+		padding-right: 4px;
 	}
 
-	.source-link {
-		margin-top: 16px;
+	.comment-line {
+		margin-top: 8px;
+		line-height: 1.55;
+		color: #5c5042;
+		overflow-wrap: anywhere;
 	}
 
 	.recipe-grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
-		gap: 20px;
+		gap: 24px;
 		align-items: start;
 	}
 
@@ -950,6 +1228,63 @@
 	.detail-panel {
 		position: sticky;
 		top: 24px;
+		min-height: 70vh;
+	}
+
+	.cookbook-page {
+		background:
+			linear-gradient(180deg, rgba(255, 252, 246, 0.94), rgba(249, 241, 228, 0.94)),
+			rgba(255, 252, 246, 0.84);
+		box-shadow:
+			0 28px 58px rgba(83, 59, 25, 0.08),
+			inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+	}
+
+	.recipe-page-head {
+		display: grid;
+		gap: 12px;
+		padding-bottom: 20px;
+		border-bottom: 1px solid rgba(72, 54, 29, 0.09);
+	}
+
+	.recipe-page-grid {
+		display: grid;
+		grid-template-columns: 1.2fr 0.8fr;
+		gap: 18px;
+	}
+
+	.ingredient-pills {
+		gap: 10px;
+	}
+
+	.profile-list,
+	.recipe-steps {
+		display: grid;
+		gap: 10px;
+	}
+
+	.inspiration-list {
+		display: grid;
+		gap: 10px;
+	}
+
+	.inspiration-chip {
+		padding: 12px 14px;
+		border-radius: 16px;
+		background: rgba(255, 248, 236, 0.92);
+		border: 1px solid rgba(72, 54, 29, 0.08);
+	}
+
+	.inspiration-chip p {
+		font-weight: 700;
+		overflow-wrap: anywhere;
+	}
+
+	.inspiration-chip span {
+		display: block;
+		margin-top: 4px;
+		color: #6e5a42;
+		font-size: 0.92rem;
 	}
 
 	.detail-copy {
@@ -992,17 +1327,63 @@
 	}
 
 	@media (max-width: 1040px) {
-		.hero-grid,
-		.insight-grid,
-		.recipe-grid,
-		.source-list,
-		.step-row,
-		.step-status-grid {
+		.stage-chrome {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.stage-progress {
+			align-self: flex-start;
+		}
+
+		.recipe-grid {
 			grid-template-columns: 1fr;
 		}
 
 		.detail-panel {
 			position: static;
+		}
+
+		.module-action {
+			align-items: stretch;
+		}
+
+		.module-button {
+			width: 100%;
+		}
+
+		.step-inline-status {
+			width: 100%;
+			box-sizing: border-box;
+		}
+
+		.posts-stage-top,
+		.recipe-stage-top,
+		.focus-footer {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.top-actions {
+			flex-direction: column;
+		}
+
+		.card-stack-shell,
+		.posts-stage-center {
+			min-height: auto;
+		}
+
+		.stack-card {
+			display: none;
+		}
+
+		.source-focus-card {
+			width: 100%;
+			min-height: auto;
+		}
+
+		.recipe-page-grid {
+			grid-template-columns: 1fr;
 		}
 	}
 
@@ -1011,12 +1392,9 @@
 			padding: 24px 16px 48px;
 		}
 
-		.hero-copy,
-		.flow-card,
-		.metrics-card,
+		.composer-card,
 		.summary-card,
 		.plan-card,
-		.source-card,
 		.recipe-card,
 		.detail-panel {
 			padding: 20px;
@@ -1024,21 +1402,25 @@
 		}
 
 		h1 {
-			font-size: 2.8rem;
+			font-size: 2.3rem;
 			max-width: none;
 		}
 
-		.source-dual,
-		.source-header,
+		.brand-copy,
+		.section-support {
+			max-width: none;
+		}
+
 		.recipe-top,
 		.recipe-meta,
-		.source-meta {
+		.focus-meta-grid {
 			grid-template-columns: 1fr;
 			flex-direction: column;
 		}
 
-		.metrics-grid {
-			grid-template-columns: 1fr 1fr;
+		.stage-progress {
+			flex-wrap: wrap;
 		}
+
 	}
 </style>

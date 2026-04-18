@@ -11,6 +11,7 @@ const searchPlanSchema = z.object({
 	englishKeywords: z.array(z.string()).optional(),
 	chineseKeywords: z.array(z.string()).optional(),
 	searchQueries: z.array(z.string()).min(1),
+	subredditCandidates: z.array(z.string()).optional(),
 	primaryQuery: z.string(),
 	explanation: z.string().optional()
 });

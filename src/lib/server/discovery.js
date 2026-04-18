@@ -1,5 +1,11 @@
 // @ts-nocheck
-import { fetchRednoteViaMcpo, getMcpoSearchPath, parseRednoteResponse } from '$lib/server/mcpo';
+import {
+	fetchRedditPostContentViaMcpo,
+	fetchRedditPostsViaMcpo,
+	getMcpoPostsPath,
+	parseRedditPostContentResponse,
+	parseRedditPostsResponse
+} from '$lib/server/mcpo';
 import { generateStructuredJson } from '$lib/server/llm';
 
 export async function collectSourceNotes(fetch, userQuery, searchPlan) {
@@ -10,36 +16,39 @@ export async function collectSourceNotes(fetch, userQuery, searchPlan) {
 	const retrievalErrors = [];
 	const collectedNotes = [];
 	const rawChunks = [];
+	const subredditCandidates = Array.isArray(searchPlan.subredditCandidates)
+		? searchPlan.subredditCandidates
+		: deriveFallbackSubreddits(userQuery, searchPlan.searchQueries);
 
-	for (const candidate of searchPlan.searchQueries) {
+	for (const subreddit of subredditCandidates.slice(0, 2)) {
 		try {
-			const candidateRaw = await fetchRednoteViaMcpo(fetch, candidate, 3);
-			const candidateNotes = parseRednoteResponse(candidateRaw, userQuery);
+			const listingRaw = await fetchRedditPostsViaMcpo(fetch, subreddit, 2, 'month');
+			const candidateNotes = parseRedditPostsResponse(listingRaw, userQuery, subreddit);
 			if (candidateNotes.length > 0) {
 				if (resolvedQuery === searchPlan.primaryQuery) {
-					resolvedQuery = candidate;
+					resolvedQuery = `r/${subreddit}`;
 				}
-				rawChunks.push(candidateRaw);
-				collectedNotes.push(
-					...candidateNotes.map((note, index) => ({
-						...note,
-						id: `${note.id}-${candidate}-${index}`
-					}))
-				);
+
+				for (const note of candidateNotes.slice(0, 2)) {
+					const enrichedNote = await attachPostContent(fetch, note);
+					collectedNotes.push(enrichedNote);
+				}
+
+				rawChunks.push(listingRaw);
 			}
 		} catch (error) {
 			retrievalErrors.push({
-				candidate,
+				candidate: subreddit,
 				message: error instanceof Error ? error.message : 'MCP request failed.'
 			});
 		}
 
-		if (collectedNotes.length >= 3) {
+		if (collectedNotes.length >= 4) {
 			break;
 		}
 	}
 
-	sourceNotes = dedupeNotes(collectedNotes).slice(0, 3);
+	sourceNotes = dedupeNotes(collectedNotes).slice(0, 4);
 	raw = rawChunks.join('\n\n');
 	retrievalError = formatRetrievalError(retrievalErrors, sourceNotes.length);
 
@@ -49,34 +58,9 @@ export async function collectSourceNotes(fetch, userQuery, searchPlan) {
 		resolvedQuery,
 		retrievalError,
 		message: retrievalError
-			? `Keyword planning completed, but source retrieval had a problem: ${retrievalError}`
-			: `Recipes retrieved through mcpo path "${getMcpoSearchPath()}". Search query used: "${resolvedQuery}". ${searchPlan.explanation}`
+			? `Search terms were ready, but Reddit retrieval had a problem: ${retrievalError}`
+			: `Posts were retrieved through mcpo path "${getMcpoPostsPath()}". Source used: "${resolvedQuery}". ${searchPlan.explanation}`
 	};
-}
-
-function formatRetrievalError(retrievalErrors, successfulCount) {
-	if (!Array.isArray(retrievalErrors) || retrievalErrors.length === 0) {
-		return '';
-	}
-
-	const normalizedMessages = retrievalErrors
-		.map((item) => {
-			const candidate = typeof item?.candidate === 'string' ? item.candidate : 'unknown query';
-			const message = typeof item?.message === 'string' ? item.message.replace(/\s+/g, ' ').trim() : 'Unknown error';
-			return `"${candidate}": ${message}`;
-		})
-		.slice(0, 3);
-
-	const joined = normalizedMessages.join(' | ');
-	if (successfulCount > 0) {
-		return `Some Rednote searches failed, but partial results were still collected. Failed queries: ${joined}`;
-	}
-
-	if (normalizedMessages.some((message) => message.includes('Not logged in'))) {
-		return `Rednote source retrieval failed because the MCP browser session is not logged in. Failed queries: ${joined}`;
-	}
-
-	return `All Rednote searches failed. Failed queries: ${joined}`;
 }
 
 export async function analyzeSourceNotes(fetch, userQuery, resolvedQuery, sourceNotes, rawContent) {
@@ -86,31 +70,31 @@ export async function analyzeSourceNotes(fetch, userQuery, resolvedQuery, source
 			enrichedSourceNotes: [],
 			recipeReadyNotes: [],
 			aiSummary: '',
-			fallbackSummary: `No strong Rednote recipe matches were extracted yet for "${userQuery}".`
+			fallbackSummary: `No strong Reddit recipe matches were extracted yet for "${userQuery}".`
 		};
 	}
 
 	const sourceAnalysis = await generateStructuredJson(
 		fetch,
 		`User request: ${userQuery}
-Search query used: ${resolvedQuery}
+Source used: ${resolvedQuery}
 
 Source notes:
 ${sourceText}
 
 Task:
-1. Evaluate the 2 to 3 source notes.
-2. Decide whether each note is useful for recipe generation.
+1. Evaluate up to 4 Reddit posts and comment snippets.
+2. Decide whether each post is useful for recipe generation.
 3. If useful, extract one short recipe cue from it.
-4. Write one concise summary of the overall recipe direction based only on useful notes.
+4. Write one concise summary of the overall recipe direction based only on useful posts.
 
 Rules:
-- A note is useful only if it contains concrete drink inspiration such as ingredients, flavor pairings, drink type, or preparation clues.
-- If a note is vague, aesthetic-only, or not recipe-relevant, mark it not useful.
+- A post is useful only if it contains concrete drink inspiration such as ingredients, flavor pairings, drink type, preparation clues, ratios, or helpful comment advice.
+- If a post is vague, aesthetic-only, or not recipe-relevant, mark it not useful.
 - Keep the summary concise and readable.
-- Keep the per-note reason concise.
+- Keep the per-post reason concise.
 - Keep the recipe cue short, like a design hint, not a full recipe.
-- If none of the notes are useful, say that clearly in the summary.`,
+- If none of the posts are useful, say that clearly in the summary.`,
 		`{
   "summary": "string",
   "notes": [
@@ -146,18 +130,18 @@ export async function generateRecipesFromNotes(fetch, userQuery, resolvedQuery, 
 	const result = await generateStructuredJson(
 		fetch,
 		`User request: ${userQuery}
-Search query used: ${resolvedQuery}
-AI summary:
+Source used: ${resolvedQuery}
+Editor note:
 ${summaryText}
 
-Supporting source notes:
+Supporting source posts and comment cues:
 ${sourceText}
 
-Generate 3 feasible drink recipes based primarily on the AI summary above.
-Use the source notes only as supporting evidence.
-Only use notes that are clearly helpful for recipe generation.
+Generate 3 feasible drink recipes based primarily on the editor note above.
+Use the Reddit posts and comments only as supporting evidence.
+Only use posts that are clearly helpful for recipe generation.
 Do not copy any single post directly.
-You may moderately refine, combine, and complete missing details so the recipes feel more coherent and more practical.
+You may moderately refine, combine, and complete missing details so the recipes feel more coherent and practical.
 Each recipe should feel plausible, distinct, and easy to understand in a web interface.
 Prefer simple ingredients, 2 to 4 preparation steps, and a clear reason why the recipe fits the user request.`,
 		`{
@@ -188,21 +172,61 @@ Prefer simple ingredients, 2 to 4 preparation steps, and a clear reason why the 
 export function buildSourceText(sourceNotes, rawContent) {
 	if (Array.isArray(sourceNotes) && sourceNotes.length > 0) {
 		return sourceNotes
-			.slice(0, 3)
+			.slice(0, 4)
 			.map(
 				(note, index) =>
-					`Note ${index + 1}
+					`Post ${index + 1}
 Id: ${note.id}
 Title: ${note.name}
+Community: ${note.vibe}
 Taste: ${note.taste}
-Reason: ${note.matchReason}
-Steps: ${Array.isArray(note.steps) ? note.steps.join(' ') : ''}
-Signals: ${Array.isArray(note.signals) ? note.signals.join(', ') : ''}`
+Summary: ${note.matchReason}
+Body: ${Array.isArray(note.steps) ? note.steps.join(' ') : ''}
+Signals: ${Array.isArray(note.signals) ? note.signals.join(', ') : ''}
+Comments: ${Array.isArray(note.comments) ? note.comments.map(formatCommentForPrompt).join(' | ') : ''}`
 			)
 			.join('\n\n');
 	}
 
 	return typeof rawContent === 'string' ? rawContent.slice(0, 4000) : '';
+}
+
+async function attachPostContent(fetch, note) {
+	if (!note?.redditPostId) {
+		return note;
+	}
+
+	try {
+		const rawContent = await fetchRedditPostContentViaMcpo(fetch, note.redditPostId, 4, 2);
+		const payload = parseRedditPostContentResponse(rawContent);
+		if (!payload) {
+			return note;
+		}
+
+		const postBody = typeof payload.post?.content === 'string' ? payload.post.content.trim() : '';
+		const comments = Array.isArray(payload.comments) ? flattenComments(payload.comments).slice(0, 4) : [];
+
+		return {
+			...note,
+			tagline: postBody.slice(0, 140) || note.tagline,
+			steps: postBody ? [postBody] : note.steps,
+			comments,
+			commentHighlights: comments.map((comment) => comment.content).filter(Boolean)
+		};
+	} catch {
+		return note;
+	}
+}
+
+function flattenComments(comments, depth = 0) {
+	if (!Array.isArray(comments) || depth > 1) {
+		return [];
+	}
+
+	return comments.flatMap((comment) => [
+		comment,
+		...flattenComments(Array.isArray(comment.replies) ? comment.replies : [], depth + 1)
+	]);
 }
 
 function normalizeAiRecipe(recipe, index) {
@@ -211,15 +235,15 @@ function normalizeAiRecipe(recipe, index) {
 	}
 
 	return {
-		id: typeof recipe.id === 'string' ? recipe.id : `ai-recipe-${index}`,
-		name: stringOrFallback(recipe.name, `AI Recipe ${index + 1}`),
-		tagline: stringOrFallback(recipe.tagline, 'AI-generated from Rednote patterns'),
-		vibe: stringOrFallback(recipe.vibe, 'AI interpretation'),
+		id: typeof recipe.id === 'string' ? recipe.id : `recipe-${index}`,
+		name: stringOrFallback(recipe.name, `Recipe ${index + 1}`),
+		tagline: stringOrFallback(recipe.tagline, 'A direction shaped from recent community posts'),
+		vibe: stringOrFallback(recipe.vibe, 'Community-driven'),
 		function: stringOrFallback(recipe.function, 'Personalized'),
 		taste: stringOrFallback(recipe.taste, 'Balanced'),
 		matchReason: stringOrFallback(
 			recipe.matchReason,
-			'Generated from recurring Rednote patterns and aligned to the user request.'
+			'Generated from recurring Reddit patterns and aligned to the user request.'
 		),
 		ingredients: toStringArray(recipe.ingredients),
 		steps: toStringArray(recipe.steps),
@@ -257,7 +281,7 @@ function mergeSourceAnalysis(sourceNotes, sourceAnalysis) {
 		return {
 			...note,
 			aiUseForRecipe: Boolean(insight?.use_for_recipe),
-			aiReason: stringOrFallback(insight?.reason, 'AI did not find enough recipe-specific detail in this post.'),
+			aiReason: stringOrFallback(insight?.reason, 'Not enough recipe-specific detail stood out in this post.'),
 			aiRecipeCue: stringOrFallback(
 				insight?.recipe_cue,
 				insight?.use_for_recipe ? 'Useful recipe direction detected.' : 'No strong recipe cue extracted.'
@@ -268,15 +292,15 @@ function mergeSourceAnalysis(sourceNotes, sourceAnalysis) {
 
 function deriveSummaryFromNotes(userQuery, resolvedQuery, sourceNotes) {
 	if (!Array.isArray(sourceNotes) || sourceNotes.length === 0) {
-		return `No strong Rednote recipe matches were extracted yet for "${userQuery}".`;
+		return `No strong Reddit recipe matches were extracted yet for "${userQuery}".`;
 	}
 
-	const topNotes = sourceNotes.slice(0, 3);
+	const topNotes = sourceNotes.slice(0, 4);
 	const functions = uniqueValues(topNotes.map((note) => note.function)).join(', ') || 'drink inspiration';
 	const tastes = uniqueValues(topNotes.map((note) => note.taste)).join(', ') || 'mixed flavor directions';
-	const vibes = uniqueValues(topNotes.map((note) => note.vibe)).join(', ') || 'casual social contexts';
+	const vibes = uniqueValues(topNotes.map((note) => note.vibe)).join(', ') || 'community discussions';
 
-	return `For "${userQuery}", the Rednote search term "${resolvedQuery}" surfaced posts leaning toward ${functions}. The strongest recurring taste cues are ${tastes}, and the most common contexts are ${vibes}. These notes suggest the most promising recipes are light, easy-to-make drinks built from repeat ingredient pairings rather than one-off novelty combinations.`;
+	return `For "${userQuery}", the Reddit source "${resolvedQuery}" surfaced posts leaning toward ${functions}. The strongest recurring taste cues are ${tastes}, and the most common contexts are ${vibes}. These posts suggest the most promising recipes are practical, repeatable drinks shaped by shared tips and comment-level fixes.`;
 }
 
 function uniqueValues(values) {
@@ -290,11 +314,53 @@ function dedupeNotes(notes) {
 
 	const seen = new Set();
 	return notes.filter((note) => {
-		const key = `${note.sourceUrl || ''}::${note.name || ''}::${note.tagline || ''}`.trim();
+		const key = `${note.redditPostId || ''}::${note.sourceUrl || ''}`.trim();
 		if (!key || seen.has(key)) {
 			return false;
 		}
 		seen.add(key);
 		return true;
 	});
+}
+
+function formatRetrievalError(retrievalErrors, successfulCount) {
+	if (!Array.isArray(retrievalErrors) || retrievalErrors.length === 0) {
+		return '';
+	}
+
+	const normalizedMessages = retrievalErrors
+		.map((item) => {
+			const candidate = typeof item?.candidate === 'string' ? item.candidate : 'unknown source';
+			const message = typeof item?.message === 'string' ? item.message.replace(/\s+/g, ' ').trim() : 'Unknown error';
+			return `"${candidate}": ${message}`;
+		})
+		.slice(0, 3);
+
+	const joined = normalizedMessages.join(' | ');
+	if (successfulCount > 0) {
+		return `Some Reddit sources failed, but partial results were still collected. Failed sources: ${joined}`;
+	}
+
+	return `All Reddit sources failed. Failed sources: ${joined}`;
+}
+
+function deriveFallbackSubreddits(userQuery, searchQueries = []) {
+	const text = `${userQuery}\n${Array.isArray(searchQueries) ? searchQueries.join(' ') : ''}`.toLowerCase();
+	if (/(matcha|tea|jasmine|oolong|chai)/.test(text)) return ['tea', 'matcha'];
+	if (/(coffee|espresso|latte|cold brew)/.test(text)) return ['coffee', 'espresso'];
+	if (/(cocktail|alcohol|gin|vodka|spritz|martini)/.test(text)) return ['cocktails', 'bartenders'];
+	if (/(mocktail|nonalcoholic|na |sober|sparkling)/.test(text)) return ['Mocktails', 'Soda'];
+	if (/(smoothie|protein|fruit blend)/.test(text)) return ['Smoothies', 'juicing'];
+	if (/(boba|milk tea)/.test(text)) return ['boba', 'tea'];
+	return ['Mocktails', 'cocktails'];
+}
+
+function formatCommentForPrompt(comment) {
+	if (!comment || typeof comment !== 'object') {
+		return '';
+	}
+
+	const author = typeof comment.author === 'string' && comment.author.trim() ? `${comment.author}: ` : '';
+	const content = typeof comment.content === 'string' ? comment.content.trim() : '';
+	return `${author}${content}`.trim();
 }

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "rednote": {
-      "command": "node",
-      "args": [".mcp/jonafly-rednote-alt/dist/cli.js", "--stdio"]
+    "reddit": {
+      "command": "uvx",
+      "args": ["mcp-server-reddit"]
     }
   }
 }
