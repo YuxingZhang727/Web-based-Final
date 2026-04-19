@@ -3,7 +3,7 @@ import { env } from '$env/dynamic/private';
 
 const FALLBACK_MCPO_BASE_URL = 'http://127.0.0.1:8000';
 const mcpoBaseUrl = new URL(env.mcpo_base_url || FALLBACK_MCPO_BASE_URL);
-const MCPO_TIMEOUT_MS = 35000;
+const MCPO_TIMEOUT_MS = 12000;
 const FALLBACK_POSTS_PATH = '/reddit/get_subreddit_top_posts';
 const FALLBACK_POST_CONTENT_PATH = '/reddit/get_post_content';
 
@@ -39,11 +39,24 @@ export async function fetchRedditPostContentViaMcpo(fetchFn, postId, commentLimi
 
 export function parseRedditPostsResponse(raw, userQuery, subredditName) {
 	const payload = tryParseJson(raw);
-	if (!Array.isArray(payload)) {
+	let posts = null;
+
+	if (Array.isArray(payload)) {
+		posts = payload;
+	} else if (payload && typeof payload === 'object') {
+		// Try common MCP wrapper shapes
+		const unwrapped = payload.posts ?? payload.data ?? payload.results ?? payload.content ?? payload.items;
+		if (Array.isArray(unwrapped)) {
+			posts = unwrapped;
+		}
+	}
+
+	if (!posts) {
+		console.error('[mcpo] parseRedditPostsResponse: unexpected response shape, raw preview:', String(raw || '').slice(0, 400));
 		return [];
 	}
 
-	return payload
+	return posts
 		.map((post, index) => normalizeRedditPost(post, index, userQuery, subredditName))
 		.filter(Boolean);
 }
@@ -79,9 +92,11 @@ async function callMcpo(fetchFn, path, body) {
 
 	const text = await response.text();
 	if (!response.ok) {
+		console.error(`[mcpo] request to ${path} failed (${response.status}):`, text.slice(0, 400));
 		throw new Error(text || `mcpo request failed with status ${response.status}`);
 	}
 
+	console.log(`[mcpo] raw response from ${path} (first 500 chars):`, text.slice(0, 500));
 	return text;
 }
 

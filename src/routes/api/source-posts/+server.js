@@ -28,6 +28,7 @@ export async function POST({ request, fetch }) {
 
 	return json({
 		message: sourceResult.message,
+		retrievalError: sourceResult.retrievalError,
 		searchPlan,
 		resolvedQuery: sourceResult.resolvedQuery,
 		raw: sourceResult.raw,

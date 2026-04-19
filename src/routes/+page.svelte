@@ -93,7 +93,11 @@
 		loading = true;
 		errorMessage = '';
 		stepState.posts = 'loading';
+		sourceNotes = [];
 		resetDownstream('posts');
+		// Jump to posts stage immediately so user sees the skeleton
+		currentStage = 'posts';
+		currentPostIndex = 0;
 
 		try {
 			if (!searchPlan) {
@@ -115,15 +119,15 @@
 			resolvedQuery = data.resolvedQuery || '';
 			rawSource = data.raw || '';
 			statusMessage = data.message;
-			sourceMode = 'mcp';
+			sourceMode = 'reddit';
 			expandedNotes = {};
 			if (sourceNotes.length > 0) {
 				stepState.posts = 'done';
 				currentPostIndex = 0;
-				currentStage = 'posts';
 			} else {
 				stepState.posts = 'error';
-				throw new Error('No posts were fetched.');
+				const detail = data.retrievalError || data.message || '';
+				throw new Error(detail ? `No posts found. ${detail}` : 'No posts found. Reddit may be rate-limiting or the subreddit name is wrong.');
 			}
 		} catch (error) {
 			stepState.posts = 'error';
@@ -256,9 +260,9 @@
 				<p class="brand-copy">A quieter way to move from a drink idea to a finished recipe.</p>
 			</div>
 			<div class="stage-progress" aria-label="Project stage">
-				<span class:active={currentStage === 'input'}>Request</span>
-				<span class:active={currentStage === 'posts'}>Posts</span>
-				<span class:active={currentStage === 'recipe'}>Recipe</span>
+				<span class:active={currentStage === 'input'} class="stage-pill" onclick={() => goToStage('input')}>Request</span>
+				<span class:active={currentStage === 'posts'} class:reachable={hasPosts()} class="stage-pill" onclick={() => hasPosts() && goToStage('posts')}>Posts</span>
+				<span class:active={currentStage === 'recipe'} class:reachable={hasRecipes()} class="stage-pill" onclick={() => hasRecipes() && goToStage('recipe')}>Recipe</span>
 			</div>
 		</div>
 
@@ -346,7 +350,14 @@
 								<p class="status-copy">{statusMessage}</p>
 							</div>
 							{#if errorMessage}
-								<p class="error-copy">{errorMessage}</p>
+								<div class="error-block">
+									<p class="error-copy">{errorMessage}</p>
+									{#if stepState.posts === 'error'}
+										<button type="button" class="retry-button" onclick={runSourcePosts} disabled={loading}>
+											Try again
+										</button>
+									{/if}
+								</div>
 							{/if}
 						</div>
 					</section>
@@ -379,6 +390,24 @@
 
 						<div class="posts-stage-center">
 							<div class="card-stack-shell">
+								{#if stepState.posts === 'loading'}
+									<div class="source-focus-card card skeleton-card">
+										<div class="skeleton-badge"></div>
+										<div class="skeleton-title"></div>
+										<div class="skeleton-line"></div>
+										<div class="skeleton-line short"></div>
+										<div class="skeleton-body"></div>
+										<div class="skeleton-line"></div>
+										<div class="skeleton-line short"></div>
+									</div>
+								{:else if stepState.posts === 'error'}
+									<div class="source-focus-card card error-card">
+										<p class="error-card-title">Could not load posts</p>
+										<p class="error-card-msg">{errorMessage}</p>
+										<button type="button" class="retry-button" onclick={runSourcePosts}>Try again</button>
+									</div>
+								{:else}
+
 								{#if previousPostCard()}
 									<div class="stack-card ghost previous-card">
 										<span class="stack-caption">Previous</span>
@@ -390,7 +419,7 @@
 									<article class="source-focus-card card" in:scale={{ duration: 220, start: 0.96 }}>
 										<div class="focus-head">
 											<div>
-												<p class="eyebrow">Post {currentPostIndex + 1} of {sourceNotes.length}</p>
+												<span class="post-counter-badge">Post {currentPostIndex + 1} / {sourceNotes.length}</span>
 												<h3>{activePost().name}</h3>
 												<p class="focus-tagline">{activePost().tagline}</p>
 											</div>
@@ -460,6 +489,8 @@
 										<span class="stack-caption">Next</span>
 										<p>{nextPostCard().name}</p>
 									</div>
+								{/if}
+
 								{/if}
 							</div>
 						</div>
@@ -531,7 +562,11 @@
 												</div>
 												<div>
 													<p class="sub-label">Taste</p>
-													<p>{recipe.taste}</p>
+													<div class="taste-pill-row">
+														{#each (recipe.taste || '').split(',').map(t => t.trim()).filter(Boolean) as t}
+															<span class="taste-pill">{t}</span>
+														{/each}
+													</div>
 												</div>
 											</div>
 										</button>
@@ -676,18 +711,27 @@
 		backdrop-filter: blur(10px);
 	}
 
-	.stage-progress span {
+	.stage-pill {
 		padding: 8px 12px;
 		border-radius: 999px;
 		font-size: 0.85rem;
 		color: #7f6950;
+		cursor: default;
 		transition:
 			background 0.22s ease,
 			color 0.22s ease,
 			transform 0.22s ease;
 	}
 
-	.stage-progress span.active {
+	.stage-pill.reachable {
+		cursor: pointer;
+	}
+
+	.stage-pill.reachable:hover {
+		background: rgba(201, 109, 27, 0.07);
+	}
+
+	.stage-pill.active {
 		background: rgba(201, 109, 27, 0.12);
 		color: #7a4210;
 		transform: translateY(-1px);
@@ -774,7 +818,12 @@
 		box-sizing: border-box;
 	}
 
-	textarea:focus,
+	textarea:focus {
+		outline: none;
+		border-left: 3px solid #c96d1b;
+		padding-left: 13px;
+	}
+
 	.chip:focus,
 	.recipe-card:focus,
 	.module-button:focus,
@@ -804,6 +853,8 @@
 		border: 1px solid rgba(72, 54, 29, 0.12);
 		background: white;
 		cursor: pointer;
+		font-size: 0.86rem;
+		padding: 8px 14px;
 	}
 
 	.chip-grid {
@@ -863,6 +914,7 @@
 	.module-button:disabled {
 		opacity: 0.7;
 		cursor: wait;
+		transition: opacity 0.2s ease;
 	}
 
 	.source-badge {
@@ -1063,9 +1115,11 @@
 		z-index: 2;
 		width: min(100%, 720px);
 		min-height: 560px;
+		padding: 36px;
 		display: grid;
 		gap: 18px;
 		align-content: start;
+		border-top: 3px solid rgba(201, 109, 27, 0.35);
 		background:
 			linear-gradient(180deg, rgba(255, 252, 246, 0.96), rgba(247, 239, 227, 0.94)),
 			rgba(255, 252, 246, 0.84);
@@ -1217,6 +1271,10 @@
 		box-shadow: 0 24px 44px rgba(123, 82, 31, 0.14);
 	}
 
+	.recipe-card.selected {
+		border-left: 3px solid rgba(201, 109, 27, 0.6);
+	}
+
 	.recipe-top span {
 		padding: 6px 10px;
 		border-radius: 999px;
@@ -1245,6 +1303,10 @@
 		gap: 12px;
 		padding-bottom: 20px;
 		border-bottom: 1px solid rgba(72, 54, 29, 0.09);
+	}
+
+	.recipe-page-head h2 {
+		font-size: 1.85rem;
 	}
 
 	.recipe-page-grid {
@@ -1385,6 +1447,114 @@
 		.recipe-page-grid {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	.skeleton-card {
+		width: min(100%, 720px);
+		min-height: 420px;
+		padding: 36px;
+		display: grid;
+		gap: 18px;
+		align-content: start;
+	}
+
+	@keyframes shimmer {
+		0% { background-position: -600px 0; }
+		100% { background-position: 600px 0; }
+	}
+
+	.skeleton-badge,
+	.skeleton-title,
+	.skeleton-line,
+	.skeleton-body {
+		border-radius: 8px;
+		background: linear-gradient(90deg, rgba(72,54,29,0.07) 25%, rgba(72,54,29,0.13) 50%, rgba(72,54,29,0.07) 75%);
+		background-size: 600px 100%;
+		animation: shimmer 1.4s infinite linear;
+	}
+
+	.skeleton-badge { height: 22px; width: 90px; border-radius: 999px; }
+	.skeleton-title { height: 36px; width: 75%; }
+	.skeleton-line { height: 16px; width: 100%; }
+	.skeleton-line.short { width: 55%; }
+	.skeleton-body { height: 120px; width: 100%; border-radius: 14px; }
+
+	.error-card {
+		width: min(100%, 720px);
+		padding: 48px 36px;
+		display: grid;
+		gap: 16px;
+		align-content: center;
+		justify-items: start;
+	}
+
+	.error-card-title {
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: #9b3d31;
+	}
+
+	.error-card-msg {
+		line-height: 1.6;
+		color: #7a4a3d;
+		max-width: 52ch;
+	}
+
+	.post-counter-badge {
+		display: inline-block;
+		padding: 4px 10px;
+		border-radius: 999px;
+		background: rgba(201, 109, 27, 0.1);
+		color: #7a4210;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		margin-bottom: 10px;
+	}
+
+	.taste-pill-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-top: 4px;
+	}
+
+	.taste-pill {
+		padding: 3px 10px;
+		border-radius: 999px;
+		background: rgba(201, 109, 27, 0.09);
+		color: #7a4210;
+		font-size: 0.8rem;
+	}
+
+	.error-block {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 12px;
+		margin-top: 14px;
+	}
+
+	.error-block .error-copy {
+		margin-top: 0;
+		flex: 1 1 200px;
+	}
+
+	.retry-button {
+		padding: 8px 16px;
+		border-radius: 999px;
+		border: 1px solid rgba(166, 61, 46, 0.3);
+		background: rgba(248, 223, 219, 0.8);
+		color: #9b3d31;
+		font: inherit;
+		font-size: 0.9rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.retry-button:hover {
+		background: rgba(248, 223, 219, 1);
 	}
 
 	@media (max-width: 760px) {

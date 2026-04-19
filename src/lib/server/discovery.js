@@ -1,65 +1,56 @@
 // @ts-nocheck
-import {
-	fetchRedditPostContentViaMcpo,
-	fetchRedditPostsViaMcpo,
-	getMcpoPostsPath,
-	parseRedditPostContentResponse,
-	parseRedditPostsResponse
-} from '$lib/server/mcpo';
+import { fetchSubredditPosts, fetchPostWithComments, normalizePost } from '$lib/server/reddit';
 import { generateStructuredJson } from '$lib/server/llm';
 
 export async function collectSourceNotes(fetch, userQuery, searchPlan) {
-	let raw = '';
-	let sourceNotes = [];
 	let resolvedQuery = searchPlan.primaryQuery;
-	let retrievalError = '';
 	const retrievalErrors = [];
-	const collectedNotes = [];
-	const rawChunks = [];
 	const subredditCandidates = Array.isArray(searchPlan.subredditCandidates)
 		? searchPlan.subredditCandidates
 		: deriveFallbackSubreddits(userQuery, searchPlan.searchQueries);
 
-	for (const subreddit of subredditCandidates.slice(0, 2)) {
-		try {
-			const listingRaw = await fetchRedditPostsViaMcpo(fetch, subreddit, 2, 'month');
-			const candidateNotes = parseRedditPostsResponse(listingRaw, userQuery, subreddit);
-			if (candidateNotes.length > 0) {
-				if (resolvedQuery === searchPlan.primaryQuery) {
-					resolvedQuery = `r/${subreddit}`;
-				}
+	// Fetch all subreddits in parallel
+	const subredditResults = await Promise.allSettled(
+		subredditCandidates.slice(0, 2).map(async (subreddit) => {
+			const rawPosts = await fetchSubredditPosts(fetch, subreddit, 4, 'month');
+			const notes = rawPosts
+				.slice(0, 2)
+				.map((raw, i) => normalizePost(raw, i, userQuery, subreddit))
+				.filter(Boolean);
 
-				for (const note of candidateNotes.slice(0, 2)) {
-					const enrichedNote = await attachPostContent(fetch, note);
-					collectedNotes.push(enrichedNote);
-				}
+			// Fetch full post content + comments in parallel
+			const enriched = await Promise.all(notes.map((note) => attachPostContent(fetch, note)));
+			return { subreddit, notes: enriched };
+		})
+	);
 
-				rawChunks.push(listingRaw);
+	const collectedNotes = [];
+	for (const result of subredditResults) {
+		if (result.status === 'fulfilled' && result.value.notes.length > 0) {
+			if (resolvedQuery === searchPlan.primaryQuery) {
+				resolvedQuery = `r/${result.value.subreddit}`;
 			}
-		} catch (error) {
+			collectedNotes.push(...result.value.notes);
+		} else if (result.status === 'rejected') {
+			const idx = subredditResults.indexOf(result);
 			retrievalErrors.push({
-				candidate: subreddit,
-				message: error instanceof Error ? error.message : 'MCP request failed.'
+				candidate: subredditCandidates[idx] ?? 'unknown',
+				message: result.reason instanceof Error ? result.reason.message : 'Reddit fetch failed.'
 			});
-		}
-
-		if (collectedNotes.length >= 4) {
-			break;
 		}
 	}
 
-	sourceNotes = dedupeNotes(collectedNotes).slice(0, 4);
-	raw = rawChunks.join('\n\n');
-	retrievalError = formatRetrievalError(retrievalErrors, sourceNotes.length);
+	const sourceNotes = dedupeNotes(collectedNotes).slice(0, 4);
+	const retrievalError = formatRetrievalError(retrievalErrors, sourceNotes.length);
 
 	return {
-		raw,
+		raw: '',
 		sourceNotes,
 		resolvedQuery,
 		retrievalError,
 		message: retrievalError
-			? `Search terms were ready, but Reddit retrieval had a problem: ${retrievalError}`
-			: `Posts were retrieved through mcpo path "${getMcpoPostsPath()}". Source used: "${resolvedQuery}". ${searchPlan.explanation}`
+			? `Reddit retrieval had a problem: ${retrievalError}`
+			: `Posts fetched from Reddit. Source: "${resolvedQuery}". ${searchPlan.explanation}`
 	};
 }
 
@@ -192,42 +183,27 @@ Comments: ${Array.isArray(note.comments) ? note.comments.map(formatCommentForPro
 }
 
 async function attachPostContent(fetch, note) {
-	if (!note?.redditPostId) {
-		return note;
-	}
+	if (!note?.redditPostId) return note;
 
 	try {
-		const rawContent = await fetchRedditPostContentViaMcpo(fetch, note.redditPostId, 4, 2);
-		const payload = parseRedditPostContentResponse(rawContent);
-		if (!payload) {
-			return note;
-		}
+		const payload = await fetchPostWithComments(fetch, note.subreddit || '', note.redditPostId, 5);
+		if (!payload) return note;
 
-		const postBody = typeof payload.post?.content === 'string' ? payload.post.content.trim() : '';
-		const comments = Array.isArray(payload.comments) ? flattenComments(payload.comments).slice(0, 4) : [];
+		const postBody = typeof payload.post?.selftext === 'string' ? payload.post.selftext.trim() : '';
+		const comments = Array.isArray(payload.comments) ? payload.comments.slice(0, 4) : [];
 
 		return {
 			...note,
 			tagline: postBody.slice(0, 140) || note.tagline,
 			steps: postBody ? [postBody] : note.steps,
 			comments,
-			commentHighlights: comments.map((comment) => comment.content).filter(Boolean)
+			commentHighlights: comments.map((c) => c.content).filter(Boolean)
 		};
 	} catch {
 		return note;
 	}
 }
 
-function flattenComments(comments, depth = 0) {
-	if (!Array.isArray(comments) || depth > 1) {
-		return [];
-	}
-
-	return comments.flatMap((comment) => [
-		comment,
-		...flattenComments(Array.isArray(comment.replies) ? comment.replies : [], depth + 1)
-	]);
-}
 
 function normalizeAiRecipe(recipe, index) {
 	if (!recipe || typeof recipe !== 'object') {
