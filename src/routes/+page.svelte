@@ -260,26 +260,6 @@
 		return 'Request';
 	}
 
-	function getDrinkProfile(prompt) {
-		const s = (prompt || '').toLowerCase();
-		if (/(matcha|green tea|抹茶)/.test(s))
-			return { label: 'Matcha', color: '#4a9b6b', type: 'teacup' };
-		if (/(coffee|espresso|latte|cold brew|americano|cappuccino)/.test(s))
-			return { label: 'Coffee', color: '#6b3a2a', type: 'coffee' };
-		if (/(cocktail|gin|vodka|spritz|martini|whiskey|rum|alcohol)/.test(s))
-			return { label: 'Cocktail', color: '#7c4fa0', type: 'martini' };
-		if (/(boba|bubble tea|milk tea|tapioca)/.test(s))
-			return { label: 'Boba', color: '#d4a0c0', type: 'boba' };
-		if (/(smoothie|fruit blend|açaí|acai|blended)/.test(s))
-			return { label: 'Smoothie', color: '#e07840', type: 'tall' };
-		if (/(mocktail|non-?alcoholic|virgin|sparkling|soda)/.test(s))
-			return { label: 'Mocktail', color: '#c96d1b', type: 'highball' };
-		if (/(tea|oolong|jasmine|chai|earl grey|herbal|floral|botanical)/.test(s))
-			return { label: 'Tea', color: '#3a7e6e', type: 'teacup' };
-		return { label: 'Brewing', color: '#c96d1b', type: 'teacup' };
-	}
-
-	const drinkProfile = $derived(getDrinkProfile(userPrompt));
 </script>
 
 <svelte:head>
