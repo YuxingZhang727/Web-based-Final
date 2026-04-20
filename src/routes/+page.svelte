@@ -263,7 +263,7 @@
 </script>
 
 <svelte:head>
-	<title>Field Notes</title>
+	<title>Sip</title>
 	<meta
 		name="description"
 		content="A drink discovery interface that turns social inspiration into clear, usable recipe directions."
@@ -274,14 +274,25 @@
 	<div class="stage-frame">
 		<div class="stage-chrome">
 			<div class="brand-block">
-				<p class="eyebrow">Field Notes</p>
+				<p class="eyebrow">Sip</p>
 				<p class="brand-copy">A quieter way to move from a drink idea to a finished recipe.</p>
 			</div>
-			<div class="stage-progress" aria-label="Project stage">
-				<span class:active={currentStage === 'input'} class="stage-pill" onclick={() => goToStage('input')}>Request</span>
-				<span class:active={currentStage === 'posts'} class:reachable={hasPosts()} class="stage-pill" onclick={() => hasPosts() && goToStage('posts')}>Posts</span>
-				<span class:active={currentStage === 'recipe'} class:reachable={hasRecipes()} class="stage-pill" onclick={() => hasRecipes() && goToStage('recipe')}>Recipe</span>
-			</div>
+			<nav class="stage-progress" aria-label="Steps">
+				<button class="stage-pill" class:active={currentStage === 'input'} class:done={hasPosts()} onclick={() => goToStage('input')}>
+					<span class="step-num">01</span>
+					<span class="step-label">Request</span>
+				</button>
+				<span class="step-arrow">→</span>
+				<button class="stage-pill" class:active={currentStage === 'posts' || currentStage === 'loading-recipe'} class:done={hasRecipes()} class:reachable={hasPosts()} disabled={!hasPosts()} onclick={() => hasPosts() && goToStage('posts')}>
+					<span class="step-num">02</span>
+					<span class="step-label">Posts</span>
+				</button>
+				<span class="step-arrow">→</span>
+				<button class="stage-pill" class:active={currentStage === 'recipe'} class:reachable={hasRecipes()} disabled={!hasRecipes()} onclick={() => hasRecipes() && goToStage('recipe')}>
+					<span class="step-num">03</span>
+					<span class="step-label">Recipe</span>
+				</button>
+			</nav>
 		</div>
 
 		{#key currentStage}
@@ -302,21 +313,21 @@
 							</div>
 
 							<div class="input-actions">
-								<div class="action-stack">
-									<button type="button" class="module-button primary-button" onclick={runSourcePosts} disabled={loading}>
-										{stepState.posts === 'loading' ? 'Fetching posts…' : 'Fetch posts'}
-									</button>
-									<p class:done={stepState.posts === 'done'} class:error={stepState.posts === 'error'} class="step-inline-status">
-										Posts: {stepState.posts}
-									</p>
-								</div>
-
 								<div class="action-stack secondary-stack">
 									<button type="button" class="module-button subtle-button" onclick={runSearchPlan} disabled={loading}>
-										{stepState.search === 'loading' ? 'Working…' : 'Find search terms'}
+										{stepState.search === 'loading' ? 'Interpreting…' : 'Preview search plan'}
 									</button>
 									<p class:done={stepState.search === 'done'} class:error={stepState.search === 'error'} class="step-inline-status">
 										Search: {stepState.search}
+									</p>
+								</div>
+
+								<div class="action-stack">
+									<button type="button" class="module-button primary-button" onclick={runSourcePosts} disabled={loading}>
+										{stepState.posts === 'loading' ? 'Fetching posts…' : 'Fetch posts →'}
+									</button>
+									<p class:done={stepState.posts === 'done'} class:error={stepState.posts === 'error'} class="step-inline-status">
+										Posts: {stepState.posts}
 									</p>
 								</div>
 							</div>
@@ -748,38 +759,87 @@
 	.stage-progress {
 		display: inline-flex;
 		align-items: center;
-		gap: 10px;
-		padding: 8px 10px;
+		gap: 6px;
+		padding: 8px 12px;
 		border-radius: 999px;
 		background: rgba(255, 248, 236, 0.78);
 		border: 1px solid rgba(72, 54, 29, 0.08);
 		backdrop-filter: blur(10px);
 	}
 
+	.step-arrow {
+		color: rgba(72, 54, 29, 0.25);
+		font-size: 0.8rem;
+		padding: 0 2px;
+		pointer-events: none;
+	}
+
 	.stage-pill {
-		padding: 8px 12px;
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		padding: 7px 14px;
 		border-radius: 999px;
-		font-size: 0.85rem;
-		color: #7f6950;
+		border: none;
+		background: transparent;
+		font: inherit;
 		cursor: default;
+		color: #a08060;
 		transition:
 			background 0.22s ease,
 			color 0.22s ease,
-			transform 0.22s ease;
+			transform 0.15s ease;
 	}
 
-	.stage-pill.reachable {
+	.stage-pill:disabled {
+		cursor: default;
+		opacity: 0.55;
+	}
+
+	.step-num {
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		opacity: 0.6;
+	}
+
+	.step-label {
+		font-size: 0.85rem;
+	}
+
+	.stage-pill.reachable:not(:disabled) {
 		cursor: pointer;
 	}
 
-	.stage-pill.reachable:hover {
+	.stage-pill.reachable:not(:disabled):hover {
 		background: rgba(201, 109, 27, 0.07);
+		color: #7a4210;
 	}
 
 	.stage-pill.active {
 		background: rgba(201, 109, 27, 0.12);
 		color: #7a4210;
-		transform: translateY(-1px);
+		cursor: default;
+	}
+
+	.stage-pill.active .step-num {
+		opacity: 1;
+	}
+
+	.stage-pill.done:not(.active) {
+		color: #3a7a55;
+	}
+
+	.stage-pill.done:not(.active) .step-num {
+		opacity: 1;
+	}
+
+	.stage-pill.done:not(.active):not(:disabled) {
+		cursor: pointer;
+	}
+
+	.stage-pill.done:not(.active):hover {
+		background: rgba(58, 122, 85, 0.07);
 	}
 
 	.card {

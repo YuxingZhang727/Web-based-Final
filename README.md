@@ -1,4 +1,4 @@
-# Field Notes
+# Sip
 
 > A quieter way to move from a drink idea to a finished recipe.
 
@@ -6,13 +6,13 @@
 
 ## Tagline
 
-Field Notes turns a mood, a flavor, or a moment into a concrete drink recipe — by searching real Reddit communities and using AI to interpret what people are actually making and drinking.
+Sip turns a mood, a flavor, or a moment into a concrete drink recipe — by searching real Reddit communities and using AI to interpret what people are actually making and drinking.
 
 ---
 
 ## Project Description
 
-Field Notes is a web-based drink discovery interface that bridges the gap between vague inspiration and actionable recipes. Instead of returning generic search results or pre-authored content, the app:
+Sip is a web-based drink discovery interface that bridges the gap between vague inspiration and actionable recipes. Instead of returning generic search results or pre-authored content, the app:
 
 - **Interprets natural-language prompts** — users describe what they want in plain language ("something floral and slightly bitter", "an iced coffee for a hot afternoon")
 - **Searches the right Reddit community** — an AI query planner picks the most relevant subreddit (r/tea, r/coffee, r/cocktails, r/boba, etc.) and generates search keywords specific to the prompt
