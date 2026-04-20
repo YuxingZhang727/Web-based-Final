@@ -141,6 +141,7 @@
 		loading = true;
 		errorMessage = '';
 		stepState.recipes = 'loading';
+		currentStage = 'loading-recipe';
 
 		try {
 			if (!sourceNotes.length) {
@@ -179,6 +180,7 @@
 		} catch (error) {
 			stepState.recipes = 'error';
 			errorMessage = error instanceof Error ? error.message : 'Unknown request error';
+			currentStage = 'posts';
 		} finally {
 			loading = false;
 		}
@@ -242,6 +244,27 @@
 		if (currentStage === 'recipe') return 'Recipe page';
 		return 'Request';
 	}
+
+	function getDrinkProfile(prompt) {
+		const s = (prompt || '').toLowerCase();
+		if (/(matcha|green tea|抹茶)/.test(s))
+			return { label: 'Matcha', color: '#4a9b6b', type: 'teacup' };
+		if (/(coffee|espresso|latte|cold brew|americano|cappuccino)/.test(s))
+			return { label: 'Coffee', color: '#6b3a2a', type: 'coffee' };
+		if (/(cocktail|gin|vodka|spritz|martini|whiskey|rum|alcohol)/.test(s))
+			return { label: 'Cocktail', color: '#7c4fa0', type: 'martini' };
+		if (/(boba|bubble tea|milk tea|tapioca)/.test(s))
+			return { label: 'Boba', color: '#d4a0c0', type: 'boba' };
+		if (/(smoothie|fruit blend|açaí|acai|blended)/.test(s))
+			return { label: 'Smoothie', color: '#e07840', type: 'tall' };
+		if (/(mocktail|non-?alcoholic|virgin|sparkling|soda)/.test(s))
+			return { label: 'Mocktail', color: '#c96d1b', type: 'highball' };
+		if (/(tea|oolong|jasmine|chai|earl grey|herbal|floral|botanical)/.test(s))
+			return { label: 'Tea', color: '#3a7e6e', type: 'teacup' };
+		return { label: 'Brewing', color: '#c96d1b', type: 'teacup' };
+	}
+
+	const drinkProfile = $derived(getDrinkProfile(userPrompt));
 </script>
 
 <svelte:head>
@@ -494,6 +517,77 @@
 								{/if}
 							</div>
 						</div>
+					</div>
+				</section>
+			{:else if currentStage === 'loading-recipe'}
+				<section class="stage-view loading-stage" in:fade={{ duration: 200 }} out:fade={{ duration: 160 }}>
+					<div class="loading-screen">
+						{#if drinkProfile.type === 'martini'}
+							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+								<defs>
+									<clipPath id="martini-clip">
+										<polygon points="4,8 68,8 44,52 44,72 28,72 28,52" />
+									</clipPath>
+								</defs>
+								<rect class="liquid-fill" x="0" y="44" width="72" height="44" fill={drinkProfile.color} opacity="0.7" clip-path="url(#martini-clip)" />
+								<polygon points="4,8 68,8 44,52 44,72 28,72 28,52" stroke="#2b241d" stroke-width="2.5" fill="none" stroke-linejoin="round" />
+								<line x1="20" y1="72" x2="52" y2="72" stroke="#2b241d" stroke-width="2.5" stroke-linecap="round" />
+								<line x1="36" y1="8" x2="36" y2="8" stroke={drinkProfile.color} stroke-width="5" stroke-linecap="round" />
+							</svg>
+						{:else if drinkProfile.type === 'boba'}
+							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+								<defs>
+									<clipPath id="boba-clip">
+										<rect x="16" y="10" width="40" height="64" rx="8" />
+									</clipPath>
+								</defs>
+								<rect class="liquid-fill" x="0" y="30" width="72" height="50" fill={drinkProfile.color} opacity="0.65" clip-path="url(#boba-clip)" />
+								<rect x="16" y="10" width="40" height="64" rx="8" stroke="#2b241d" stroke-width="2.5" fill="none" />
+								<circle cx="28" cy="64" r="5" fill={drinkProfile.color} opacity="0.9" />
+								<circle cx="36" cy="66" r="5" fill={drinkProfile.color} opacity="0.9" />
+								<circle cx="44" cy="64" r="5" fill={drinkProfile.color} opacity="0.9" />
+								<line x1="36" y1="10" x2="36" y2="2" stroke="#2b241d" stroke-width="2.5" stroke-linecap="round" />
+							</svg>
+						{:else if drinkProfile.type === 'coffee'}
+							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+								<defs>
+									<clipPath id="coffee-clip">
+										<path d="M14,24 Q14,22 16,22 L56,22 Q58,22 58,24 L52,70 Q52,72 50,72 L22,72 Q20,72 20,70 Z" />
+									</clipPath>
+								</defs>
+								<rect class="liquid-fill" x="0" y="40" width="72" height="40" fill={drinkProfile.color} opacity="0.7" clip-path="url(#coffee-clip)" />
+								<path d="M14,24 Q14,22 16,22 L56,22 Q58,22 58,24 L52,70 Q52,72 50,72 L22,72 Q20,72 20,70 Z" stroke="#2b241d" stroke-width="2.5" fill="none" />
+								<path d="M58,32 Q66,32 66,40 Q66,48 58,48" stroke="#2b241d" stroke-width="2.5" fill="none" stroke-linecap="round" />
+								<path d="M28,10 Q28,6 32,8 Q36,10 36,6 Q40,2 40,6" stroke={drinkProfile.color} stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
+							</svg>
+						{:else if drinkProfile.type === 'tall' || drinkProfile.type === 'highball'}
+							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+								<defs>
+									<clipPath id="tall-clip">
+										<path d="M18,8 L54,8 L50,74 Q50,76 36,76 Q22,76 22,74 Z" />
+									</clipPath>
+								</defs>
+								<rect class="liquid-fill" x="0" y="36" width="72" height="44" fill={drinkProfile.color} opacity="0.65" clip-path="url(#tall-clip)" />
+								<path d="M18,8 L54,8 L50,74 Q50,76 36,76 Q22,76 22,74 Z" stroke="#2b241d" stroke-width="2.5" fill="none" stroke-linejoin="round" />
+								<line x1="50" y1="8" x2="56" y2="2" stroke="#2b241d" stroke-width="2" stroke-linecap="round" />
+							</svg>
+						{:else}
+							<!-- teacup (default, matcha, tea) -->
+							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+								<defs>
+									<clipPath id="cup-clip">
+										<path d="M12,20 L60,20 L54,64 Q54,66 36,66 Q18,66 18,64 Z" />
+									</clipPath>
+								</defs>
+								<rect class="liquid-fill" x="0" y="38" width="72" height="34" fill={drinkProfile.color} opacity="0.65" clip-path="url(#cup-clip)" />
+								<path d="M12,20 L60,20 L54,64 Q54,66 36,66 Q18,66 18,64 Z" stroke="#2b241d" stroke-width="2.5" fill="none" stroke-linejoin="round" />
+								<path d="M54,30 Q64,30 64,40 Q64,50 54,50" stroke="#2b241d" stroke-width="2.5" fill="none" stroke-linecap="round" />
+								<line x1="22" y1="70" x2="50" y2="70" stroke="#2b241d" stroke-width="2.5" stroke-linecap="round" />
+								<line x1="28" y1="74" x2="44" y2="74" stroke="#2b241d" stroke-width="1.5" stroke-linecap="round" opacity="0.4" />
+							</svg>
+						{/if}
+						<p class="loading-drink-name" style="color: {drinkProfile.color}">{drinkProfile.label}</p>
+						<p class="loading-label">Building your recipe…</p>
 					</div>
 				</section>
 			{:else}
@@ -1555,6 +1649,49 @@
 
 	.retry-button:hover {
 		background: rgba(248, 223, 219, 1);
+	}
+
+	.loading-stage {
+		justify-content: center;
+	}
+
+	.loading-screen {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 60vh;
+		gap: 18px;
+	}
+
+	.loading-svg {
+		width: 72px;
+		height: 88px;
+		overflow: visible;
+	}
+
+	@keyframes liquid-rise {
+		0%   { transform: translateY(0); }
+		100% { transform: translateY(-36px); }
+	}
+
+	.liquid-fill {
+		animation: liquid-rise 1.8s ease-in-out infinite alternate;
+	}
+
+	.loading-drink-name {
+		font-size: 1.4rem;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		margin: 0;
+	}
+
+	.loading-label {
+		font-size: 0.88rem;
+		color: #8b6a42;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		margin: 0;
 	}
 
 	@media (max-width: 760px) {
