@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { fetchSubredditPosts, fetchPostWithComments, normalizePost } from '$lib/server/reddit';
+import { searchSubredditPosts, fetchPostWithComments, normalizePost } from '$lib/server/reddit';
 import { generateStructuredJson } from '$lib/server/llm';
 
 export async function collectSourceNotes(fetch, userQuery, searchPlan) {
@@ -9,13 +9,16 @@ export async function collectSourceNotes(fetch, userQuery, searchPlan) {
 		? searchPlan.subredditCandidates
 		: deriveFallbackSubreddits(userQuery, searchPlan.searchQueries);
 
-	// Fetch all subreddits in parallel
+	const searchQueries = Array.isArray(searchPlan.searchQueries) ? searchPlan.searchQueries : [];
+
+	// Fetch all subreddits in parallel, each with its own search query
 	const subredditResults = await Promise.allSettled(
-		subredditCandidates.slice(0, 2).map(async (subreddit) => {
-			const rawPosts = await fetchSubredditPosts(fetch, subreddit, 4, 'month');
+		subredditCandidates.slice(0, 2).map(async (subreddit, i) => {
+			const query = searchQueries[i] || searchQueries[0] || userQuery;
+			const rawPosts = await searchSubredditPosts(fetch, subreddit, query, 4, 'month');
 			const notes = rawPosts
 				.slice(0, 2)
-				.map((raw, i) => normalizePost(raw, i, userQuery, subreddit))
+				.map((raw, j) => normalizePost(raw, j, userQuery, subreddit))
 				.filter(Boolean);
 
 			// Fetch full post content + comments in parallel
@@ -111,27 +114,32 @@ Return a JSON object matching this schema exactly:`,
 
 export async function generateRecipesFromNotes(fetch, userQuery, resolvedQuery, sourceNotes, summaryText, rawContent) {
 	const sourceText = buildSourceText(sourceNotes, rawContent);
-	if (!summaryText || !sourceText) {
-		return [];
-	}
+	const contextBlock = sourceText
+		? `Community inspiration from ${resolvedQuery}:\n${sourceText}`
+		: `No community posts were available. Use your knowledge of drink culture and the user's request to generate fitting recipes.`;
+	const summaryBlock = summaryText
+		? `Recipe direction summary:\n${summaryText}`
+		: '';
 
 	const result = await generateStructuredJson(
 		fetch,
-		`User request: ${userQuery}
-Source used: ${resolvedQuery}
-Editor note:
-${summaryText}
+		`You are a creative drink recipe developer. Generate exactly 3 distinct drink recipes for this user request.
 
-Supporting source posts and comment cues:
-${sourceText}
+User request: "${userQuery}"
 
-Generate 3 feasible drink recipes based primarily on the editor note above.
-Use the Reddit posts and comments only as supporting evidence.
-Only use posts that are clearly helpful for recipe generation.
-Do not copy any single post directly.
-You may moderately refine, combine, and complete missing details so the recipes feel more coherent and practical.
-Each recipe should feel plausible, distinct, and easy to understand in a web interface.
-Prefer simple ingredients, 2 to 4 preparation steps, and a clear reason why the recipe fits the user request.`,
+${summaryBlock}
+
+${contextBlock}
+
+Instructions:
+- Generate exactly 3 recipes. Always produce 3 — even if community posts are sparse or missing.
+- Make each recipe distinct in base ingredient, style, or preparation method.
+- Draw inspiration from the community posts when available, but do not copy them directly.
+- When posts are sparse, use your knowledge of drink culture to fill gaps creatively.
+- Each recipe must feel practical and achievable at home with common ingredients.
+- Prefer 3–6 ingredients and 2–4 preparation steps.
+- Each recipe should clearly connect to the user's request in its matchReason.
+- Never leave any field empty — use a reasonable value for every field.`,
 		`{
   "recipes": [
     {

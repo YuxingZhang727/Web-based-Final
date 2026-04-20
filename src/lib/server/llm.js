@@ -51,7 +51,7 @@ async function generateStructuredJsonWithOpenAI(fetchFn, prompt, schemaDescripti
 			messages: [
 				{
 					role: 'system',
-					content: `Return only valid JSON. Follow this schema shape: ${schemaDescription}`
+					content: `You must respond with ONLY valid JSON. No markdown, no code fences, no explanation text — just the raw JSON object. Follow this exact schema shape:\n${schemaDescription}`
 				},
 				{
 					role: 'user',
