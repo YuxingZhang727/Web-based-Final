@@ -40,7 +40,7 @@
 		if (/(matcha|green tea|抹茶)/.test(s))                                      return { type: 'matcha',   label: 'Matcha',   color: '#4a9b6b' };
 		if (/(coffee|espresso|latte|cold brew|咖啡|cappuccino)/.test(s))             return { type: 'coffee',   label: 'Coffee',   color: '#7a4a2a' };
 		if (/(cocktail|gin|vodka|spritz|martini|whiskey|rum|alcohol)/.test(s))       return { type: 'cocktail', label: 'Cocktail', color: '#7c4fa0' };
-		if (/(boba|bubble tea|milk tea|珍珠|波霸|tapioca)/.test(s))                  return { type: 'boba',     label: 'Boba',     color: '#c9608a' };
+		if (/(boba|bubble tea|milk tea|珍珠|波霸|tapioca)/.test(s))                  return { type: 'boba',     label: 'Boba',     color: '#c8a882' };
 		if (/(smoothie|fruit blend|mango|açaí)/.test(s))                             return { type: 'smoothie', label: 'Smoothie', color: '#e07840' };
 		if (/(tea|oolong|jasmine|chai|earl grey|herbal|iced tea)/.test(s))            return { type: 'tea',      label: 'Tea',      color: '#5a8a42' };
 		if (/(mocktail|lemonade|shirley|sparkling|fizz)/.test(s))                    return { type: 'mocktail', label: 'Mocktail', color: '#2a8a7c' };
@@ -520,13 +520,12 @@
 									</clipPath>
 								</defs>
 								<g clip-path="url(#boba-clip)">
-									<rect class="liquid-fill" x="-4" y="0" width="80" height="88" fill={drinkProfile.color} opacity="0.65" />
+									<rect class="liquid-fill" x="-4" y="0" width="80" height="88" fill={drinkProfile.color} opacity="0.8" />
 								</g>
 								<rect x="16" y="10" width="40" height="64" rx="8" stroke="#2b241d" stroke-width="2.5" fill="none" />
-								<circle cx="28" cy="64" r="5" fill={drinkProfile.color} opacity="0.9" />
-								<circle cx="36" cy="66" r="5" fill={drinkProfile.color} opacity="0.9" />
-								<circle cx="44" cy="64" r="5" fill={drinkProfile.color} opacity="0.9" />
-								<line x1="36" y1="10" x2="36" y2="2" stroke="#2b241d" stroke-width="2.5" stroke-linecap="round" />
+								<circle cx="28" cy="63" r="5" fill="#2a1a0e" />
+								<circle cx="36" cy="65" r="5" fill="#2a1a0e" />
+								<circle cx="44" cy="63" r="5" fill="#2a1a0e" />
 							</svg>
 						{:else if drinkProfile.type === 'coffee'}
 							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
