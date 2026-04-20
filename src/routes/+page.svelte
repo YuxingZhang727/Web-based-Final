@@ -513,27 +513,6 @@
 						</div>
 					</div>
 
-					<section class="summary-section">
-						<div class="summary-card card">
-							<div class="section-heading">
-								<p class="eyebrow">Editor’s Note</p>
-								<h2>The direction emerging from the source posts</h2>
-							</div>
-							<p class="summary-copy">{aiSummary}</p>
-
-							<div class="summary-meta">
-								<div>
-									<p class="plan-label">Current source</p>
-									<p class="summary-meta-copy">{resolvedQuery || 'No source phrase has been used yet.'}</p>
-								</div>
-								<div>
-									<p class="plan-label">Status</p>
-									<p class="summary-meta-copy">{statusMessage}</p>
-								</div>
-							</div>
-						</div>
-					</section>
-
 					<section class="recipe-grid">
 						<div class="recipe-column">
 							<div class="section-heading">
