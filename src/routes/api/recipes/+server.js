@@ -40,12 +40,17 @@ export async function POST({ request, fetch }) {
 		body.raw || ''
 	);
 	const effectiveSummary = body.aiSummary || analysis.aiSummary || analysis.fallbackSummary;
-	const recipeReadyNotes = analysis.recipeReadyNotes.length > 0 ? analysis.recipeReadyNotes : analysis.enrichedSourceNotes.filter((note) => note.aiUseForRecipe).slice(0, 3);
+	const notesForRecipes =
+		analysis.recipeReadyNotes.length > 0
+			? analysis.recipeReadyNotes
+			: analysis.enrichedSourceNotes.length > 0
+				? analysis.enrichedSourceNotes.slice(0, 3)
+				: body.sourceNotes.slice(0, 3);
 	const aiRecipes = await generateRecipesFromNotes(
 		fetch,
 		body.query,
 		body.resolvedQuery,
-		recipeReadyNotes,
+		notesForRecipes,
 		effectiveSummary,
 		body.raw || ''
 	);

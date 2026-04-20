@@ -114,27 +114,32 @@ Rules:
 
 export async function generateRecipesFromNotes(fetch, userQuery, resolvedQuery, sourceNotes, summaryText, rawContent) {
 	const sourceText = buildSourceText(sourceNotes, rawContent);
-	if (!summaryText || !sourceText) {
-		return [];
-	}
+	const contextBlock = sourceText
+		? `Community inspiration from ${resolvedQuery}:\n${sourceText}`
+		: `No community posts were available. Use your knowledge of drink culture and the user's request to generate fitting recipes.`;
+	const summaryBlock = summaryText
+		? `Recipe direction summary:\n${summaryText}`
+		: '';
 
 	const result = await generateStructuredJson(
 		fetch,
-		`User request: ${userQuery}
-Source used: ${resolvedQuery}
-Editor note:
-${summaryText}
+		`You are a creative drink recipe developer. Generate exactly 3 distinct drink recipes for this user request.
 
-Supporting source posts and comment cues:
-${sourceText}
+User request: "${userQuery}"
 
-Generate 3 feasible drink recipes based primarily on the editor note above.
-Use the Reddit posts and comments only as supporting evidence.
-Only use posts that are clearly helpful for recipe generation.
-Do not copy any single post directly.
-You may moderately refine, combine, and complete missing details so the recipes feel more coherent and practical.
-Each recipe should feel plausible, distinct, and easy to understand in a web interface.
-Prefer simple ingredients, 2 to 4 preparation steps, and a clear reason why the recipe fits the user request.`,
+${summaryBlock}
+
+${contextBlock}
+
+Instructions:
+- Generate exactly 3 recipes. Always produce 3 — even if community posts are sparse or missing.
+- Make each recipe distinct in base ingredient, style, or preparation method.
+- Draw inspiration from the community posts when available, but do not copy them directly.
+- When posts are sparse, use your knowledge of drink culture to fill gaps creatively.
+- Each recipe must feel practical and achievable at home with common ingredients.
+- Prefer 3–6 ingredients and 2–4 preparation steps.
+- Each recipe should clearly connect to the user's request in its matchReason.
+- Never leave any field empty — use a reasonable value for every field.`,
 		`{
   "recipes": [
     {
