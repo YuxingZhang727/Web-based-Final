@@ -35,6 +35,21 @@
 	let currentStage = $state('input');
 	let currentPostIndex = $state(0);
 
+	function getDrinkProfile(prompt) {
+		const s = (prompt || '').toLowerCase();
+		if (/(matcha|green tea|抹茶)/.test(s))                                      return { type: 'matcha',   label: 'Matcha',   color: '#4a9b6b' };
+		if (/(coffee|espresso|latte|cold brew|咖啡|cappuccino)/.test(s))             return { type: 'coffee',   label: 'Coffee',   color: '#7a4a2a' };
+		if (/(cocktail|gin|vodka|spritz|martini|whiskey|rum|alcohol)/.test(s))       return { type: 'cocktail', label: 'Cocktail', color: '#7c4fa0' };
+		if (/(boba|bubble tea|milk tea|珍珠|波霸|tapioca)/.test(s))                  return { type: 'boba',     label: 'Boba',     color: '#c9608a' };
+		if (/(smoothie|fruit blend|mango|açaí)/.test(s))                             return { type: 'smoothie', label: 'Smoothie', color: '#e07840' };
+		if (/(tea|oolong|jasmine|chai|earl grey|herbal|iced tea)/.test(s))            return { type: 'tea',      label: 'Tea',      color: '#5a8a42' };
+		if (/(mocktail|lemonade|shirley|sparkling|fizz)/.test(s))                    return { type: 'mocktail', label: 'Mocktail', color: '#2a8a7c' };
+		if (/(citrus|lemon|lime|grapefruit|orange)/.test(s))                         return { type: 'mocktail', label: 'Citrus',   color: '#d4a020' };
+		return { type: 'default', label: 'Drink', color: '#c96d1b' };
+	}
+
+	const drinkProfile = $derived(getDrinkProfile(userPrompt));
+
 	function applyPrompt(chip) {
 		userPrompt = `I want a drink that feels ${chip}.`;
 	}
@@ -295,14 +310,9 @@
 					<section class="composer-card card landing-card">
 						<div class="landing-copy">
 							<h1>Find a drink that fits the moment.</h1>
-							<p class="lede">
-								Describe a flavor, a mood, or a time of day. Start with a short prompt, then move
-								into a focused browsing view for source posts and a more refined recipe page later on.
-							</p>
 						</div>
 
 						<div class="composer">
-							<p class="section-label">Describe The Kind Of Drink You Want</p>
 							<textarea bind:value={userPrompt} rows="4"></textarea>
 
 							<div class="chip-row chip-grid">
@@ -333,10 +343,6 @@
 
 							{#if hasSearchPlan()}
 								<div class="plan-card inline-plan" in:fade={{ duration: 220 }}>
-									<div class="section-heading">
-										<p class="eyebrow">Search Terms</p>
-										<h2>The phrases used to look for drinks</h2>
-									</div>
 									<div class="plan-stack">
 										<div>
 											<p class="plan-label">Search phrases</p>
@@ -360,18 +366,18 @@
 								</div>
 							{/if}
 
-							<div class="status-ribbon">
-								<span class:live={sourceMode === 'mcp'} class="source-badge">
-									{sourceMode === 'mcp'
-										? 'Live Reddit source'
-										: sourceMode === 'partial'
-											? 'Partial result'
+							{#if sourceMode !== 'idle'}
+								<div class="status-ribbon">
+									<span class:live={sourceMode === 'reddit'} class="source-badge">
+										{sourceMode === 'reddit'
+											? 'Live Reddit source'
 											: sourceMode === 'error'
 												? 'Unavailable'
-												: 'Ready'}
-								</span>
-								<p class="status-copy">{statusMessage}</p>
-							</div>
+												: 'Partial result'}
+									</span>
+									<p class="status-copy">{statusMessage}</p>
+								</div>
+							{/if}
 							{#if errorMessage}
 								<div class="error-block">
 									<p class="error-copy">{errorMessage}</p>
@@ -388,29 +394,6 @@
 			{:else if currentStage === 'posts'}
 				<section class="stage-view posts-stage" in:fly={{ y: 18, duration: 260 }} out:fade={{ duration: 180 }}>
 					<div class="posts-stage-shell">
-						<div class="posts-stage-top">
-							<div class="section-heading">
-								<p class="eyebrow">Source Posts</p>
-								<h2>Browse reference posts one at a time</h2>
-								<p class="section-support">
-									Move through the stack, keep the useful cues, then turn the strongest direction into a cleaner recipe page.
-								</p>
-							</div>
-							<div class="top-actions">
-								<button type="button" class="ghost-button" onclick={() => goToStage('input')}>
-									Edit request
-								</button>
-								<div class="module-action compact">
-									<button type="button" class="module-button" onclick={runRecipes} disabled={loading}>
-										{stepState.recipes === 'loading' ? 'Building recipe…' : 'Build recipe'}
-									</button>
-									<p class:done={stepState.recipes === 'done'} class:error={stepState.recipes === 'error'} class="step-inline-status">
-										Recipes: {stepState.recipes}
-									</p>
-								</div>
-							</div>
-						</div>
-
 						<div class="posts-stage-center">
 							<div class="card-stack-shell">
 								{#if stepState.posts === 'loading'}
@@ -517,6 +500,20 @@
 								{/if}
 							</div>
 						</div>
+
+						<div class="posts-stage-bottom">
+							<button type="button" class="ghost-button" onclick={() => goToStage('input')}>
+								Edit request
+							</button>
+							<div class="module-action compact">
+								<button type="button" class="module-button" onclick={runRecipes} disabled={loading}>
+									{stepState.recipes === 'loading' ? 'Building recipe…' : 'Build recipe'}
+								</button>
+								<p class:done={stepState.recipes === 'done'} class:error={stepState.recipes === 'error'} class="step-inline-status">
+									Recipes: {stepState.recipes}
+								</p>
+							</div>
+						</div>
 					</div>
 				</section>
 			{:else if currentStage === 'loading-recipe'}
@@ -532,7 +529,6 @@
 								<rect class="liquid-fill" x="0" y="44" width="72" height="44" fill={drinkProfile.color} opacity="0.7" clip-path="url(#martini-clip)" />
 								<polygon points="4,8 68,8 44,52 44,72 28,72 28,52" stroke="#2b241d" stroke-width="2.5" fill="none" stroke-linejoin="round" />
 								<line x1="20" y1="72" x2="52" y2="72" stroke="#2b241d" stroke-width="2.5" stroke-linecap="round" />
-								<line x1="36" y1="8" x2="36" y2="8" stroke={drinkProfile.color} stroke-width="5" stroke-linecap="round" />
 							</svg>
 						{:else if drinkProfile.type === 'boba'}
 							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -572,7 +568,6 @@
 								<line x1="50" y1="8" x2="56" y2="2" stroke="#2b241d" stroke-width="2" stroke-linecap="round" />
 							</svg>
 						{:else}
-							<!-- teacup (default, matcha, tea) -->
 							<svg class="loading-svg" viewBox="0 0 72 88" fill="none" xmlns="http://www.w3.org/2000/svg">
 								<defs>
 									<clipPath id="cup-clip">
@@ -593,13 +588,6 @@
 			{:else}
 				<section class="stage-view recipe-stage" in:fly={{ y: 18, duration: 260 }} out:fade={{ duration: 180 }}>
 					<div class="recipe-stage-top">
-						<div class="section-heading">
-							<p class="eyebrow">Recipe Page</p>
-							<h2>A more complete drink page shaped from the source posts</h2>
-							<p class="section-support">
-								The final page keeps the exploratory feel of the source material, but turns it into something easier to read and actually make.
-							</p>
-						</div>
 						<div class="top-actions">
 							<button type="button" class="ghost-button" onclick={() => goToStage('posts')}>
 								Back to posts
@@ -609,11 +597,6 @@
 
 					<section class="recipe-grid">
 						<div class="recipe-column">
-							<div class="section-heading">
-								<p class="eyebrow">Recipe Directions</p>
-								<h2>Choose a final direction</h2>
-							</div>
-
 							<div class="recipe-list">
 								{#if recipes.length > 0}
 									{#each recipes as recipe}
@@ -650,8 +633,7 @@
 
 						<div class="detail-panel card cookbook-page">
 							<div class="recipe-page-head">
-								<p class="eyebrow">Selected Drink</p>
-								<h2>{selectedRecipe ? selectedRecipe.name : 'Choose a recipe card to view the details'}</h2>
+								<h2>{selectedRecipe ? selectedRecipe.name : 'Choose a recipe'}</h2>
 								<p class="detail-copy">
 									{selectedRecipe
 										? selectedRecipe.matchReason
@@ -819,7 +801,6 @@
 	}
 
 	.eyebrow,
-	.section-label,
 	.sub-label {
 		text-transform: uppercase;
 		letter-spacing: 0.12em;
@@ -836,7 +817,6 @@
 	}
 
 	.composer-card,
-	.summary-card,
 	.recipe-card,
 	.detail-panel {
 		padding: 34px;
@@ -859,11 +839,6 @@
 		max-width: 14ch;
 	}
 
-	.lede {
-		max-width: 70ch;
-		line-height: 1.58;
-		color: #53483d;
-	}
 
 	.composer-card {
 		display: grid;
@@ -1042,37 +1017,7 @@
 		color: #a63d2e;
 	}
 
-	.summary-meta {
-		margin-top: 22px;
-		padding-top: 18px;
-		border-top: 1px solid rgba(72, 54, 29, 0.09);
-		display: grid;
-		gap: 16px;
-	}
 
-	.summary-meta-copy {
-		line-height: 1.6;
-		color: #5a4d3f;
-		margin-top: 4px;
-	}
-
-	.section-heading h2 {
-		font-size: 1.65rem;
-		line-height: 1.1;
-	}
-
-	.summary-copy {
-		margin-top: 12px;
-		line-height: 1.78;
-		color: #4f473f;
-	}
-
-	.section-support {
-		margin-top: 10px;
-		max-width: 56ch;
-		line-height: 1.62;
-		color: #5d5246;
-	}
 
 	.plan-stack {
 		margin-top: 12px;
@@ -1091,7 +1036,6 @@
 		margin-top: 0;
 	}
 
-	.summary-section,
 	.recipe-grid {
 		margin-top: 28px;
 	}
@@ -1101,13 +1045,13 @@
 		width: 100%;
 	}
 
-	.posts-stage-top,
+	.posts-stage-bottom,
 	.recipe-stage-top {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
 		gap: 18px;
-		margin-bottom: 24px;
+		margin-top: 24px;
 	}
 
 	.top-actions {
@@ -1492,15 +1436,11 @@
 			box-sizing: border-box;
 		}
 
-		.posts-stage-top,
+		.posts-stage-bottom,
 		.recipe-stage-top,
 		.focus-footer {
 			flex-direction: column;
 			align-items: stretch;
-		}
-
-		.top-actions {
-			flex-direction: column;
 		}
 
 		.card-stack-shell,
@@ -1679,7 +1619,6 @@
 		}
 
 		.composer-card,
-		.summary-card,
 		.plan-card,
 		.recipe-card,
 		.detail-panel {
@@ -1692,8 +1631,7 @@
 			max-width: none;
 		}
 
-		.brand-copy,
-		.section-support {
+		.brand-copy {
 			max-width: none;
 		}
 
@@ -1708,5 +1646,49 @@
 			flex-wrap: wrap;
 		}
 
+	}
+
+	/* ── Loading stage ── */
+	.loading-stage {
+		justify-content: center;
+	}
+
+	.loading-screen {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 20px;
+		min-height: 60vh;
+	}
+
+	.loading-svg {
+		width: 72px;
+		height: 88px;
+		overflow: visible;
+	}
+
+	.liquid-fill {
+		animation: liquid-rise 1.8s ease-in-out infinite alternate;
+	}
+
+	@keyframes liquid-rise {
+		from { transform: translateY(74px); }
+		to   { transform: translateY(6px);  }
+	}
+
+	.loading-drink-name {
+		font-size: 1.5rem;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		margin: 0;
+	}
+
+	.loading-label {
+		font-size: 0.88rem;
+		color: #8b6a42;
+		letter-spacing: 0.07em;
+		text-transform: uppercase;
+		margin: 0;
 	}
 </style>

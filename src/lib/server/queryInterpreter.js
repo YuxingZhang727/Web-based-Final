@@ -65,7 +65,7 @@ function buildEmergencyPlan(userQuery) {
 }
 
 function buildInterpreterPrompt(userQuery) {
-	return `You convert user drink requests into concise Reddit search directions.
+	return `You convert user drink requests into Reddit search directions. Your most important job is to pick the RIGHT subreddit based on the drink's actual identity — not to default to cocktails or Mocktails.
 
 Return only valid JSON with this exact shape:
 {
@@ -75,27 +75,44 @@ Return only valid JSON with this exact shape:
   "explanation": "..."
 }
 
+Available subreddits (pick the 1-2 most fitting):
+- tea            → tea, herbal infusions, floral drinks, botanical, matcha, oolong, chai
+- coffee         → coffee, espresso, latte, cold brew, pour-over
+- cocktails      → alcoholic cocktails, spirits, bartending
+- bartenders     → professional bartending, creative spirit-based drinks
+- Mocktails      → non-alcoholic versions of cocktails specifically
+- boba           → bubble tea, milk tea, tapioca drinks
+- Smoothies      → blended fruit/veggie drinks, protein shakes
+- juicing        → cold-pressed juice, fresh juice
+- kombucha       → fermented tea, probiotic drinks
+- herbalism      → herbal remedies, botanical drinks, tinctures
+- cocktails      → creative mixed drinks (use for unusual/creative non-specific drinks)
+
+Mapping examples — read these carefully:
+- "floral, herbal, slightly bitter" → tea, herbalism
+- "unusual creative botanical" → tea, herbalism
+- "matcha latte" → tea, coffee
+- "cold brew coffee" → coffee
+- "gin and tonic" → cocktails, bartenders
+- "virgin mojito" → Mocktails
+- "bubble tea with taro" → boba
+- "green smoothie" → Smoothies
+- "kombucha-style fermented" → kombucha, tea
+- "citrusy refreshing summer" → cocktails, Mocktails
+- "iced floral drink" → tea
+- "espresso martini" → coffee, cocktails
+
 Rules:
-- Focus on drink discovery.
-- Identify the user's most important drink intent from the sentence, not every descriptive word.
-- Extract only non-redundant keywords that directly matter for the drink search.
-- Prefer concrete beverage-facing concepts over generic adjectives.
-- If the user already names a drink or base ingredient such as matcha, latte, coffee, milk tea, lemonade, cocktail, or mocktail, that concept must appear in the output.
-- If two keywords overlap heavily, keep only the more useful one.
-- Prioritize keywords that can help find real drinks: flavor, base, texture, function, season, occasion.
-- Avoid repeating near-synonyms such as "refreshing / fresh / clean" all together.
-- Make the final set feel like 1 to 2 distinct drink-search directions.
-- Return exactly 1 or 2 search_queries.
-- Order search_queries from most useful to least useful.
-- Keep search_queries short, usually 2 to 5 words.
-- Include flavor, function, and context when useful.
-- Avoid full sentences.
-- search_queries should be short English phrases that fit Reddit drink posts, like "iced matcha", "citrus mocktail", "summer coffee".
-- english_keywords should contain only the most important 1 to 2 English concepts.
-- subreddit_candidates must contain 1 or 2 subreddit names without the r/ prefix.
-- Choose subreddit_candidates only from this list when possible: Mocktails, cocktails, tea, coffee, espresso, boba, Smoothies, juicing, bartenders.
-- Match the subreddit to the drink type. Example: mocktails -> Mocktails, matcha -> tea, espresso -> espresso, cocktails -> cocktails.
-- Do not let generic modifiers like "cold", "iced", or "refreshing" replace the actual drink identity.
+- Read the flavor profile and mood, not just drink names.
+- Floral, herbal, botanical, bitter, earthy → lean toward tea or herbalism.
+- Creamy, sweet, milky → lean toward boba or Smoothies.
+- Fruit-forward, blended → Smoothies or juicing.
+- Fermented, probiotic → kombucha.
+- Spirit-based, boozy → cocktails or bartenders.
+- Only use Mocktails if the user explicitly wants a non-alcoholic cocktail-style drink.
+- Do NOT default to cocktails or Mocktails when the flavor description points elsewhere.
+- Return exactly 1 or 2 search_queries as short Reddit-friendly phrases (2-5 words).
+- english_keywords: 1-2 most important drink concepts.
 
 User query:
 ${userQuery}`;
@@ -103,11 +120,19 @@ ${userQuery}`;
 
 function deriveFallbackSubreddits(userQuery) {
 	const text = userQuery.toLowerCase();
-	if (/(matcha|tea|jasmine|oolong|chai)/.test(text)) return ['tea'];
-	if (/(coffee|espresso|latte|cold brew)/.test(text)) return ['coffee'];
-	if (/(cocktail|alcohol|gin|vodka|spritz|martini)/.test(text)) return ['cocktails'];
-	if (/(mocktail|nonalcoholic|soda|sparkling)/.test(text)) return ['Mocktails'];
-	if (/(smoothie|protein|fruit blend)/.test(text)) return ['Smoothies'];
-	if (/(boba|milk tea)/.test(text)) return ['boba'];
-	return ['Mocktails'];
+	if (/(matcha|green tea|抹茶)/.test(text))                                          return ['tea'];
+	if (/(coffee|espresso|latte|cold brew|americano|cappuccino|咖啡)/.test(text))       return ['coffee', 'espresso'];
+	if (/(cocktail|gin|vodka|spritz|martini|whiskey|rum|alcohol|alcoholic)/.test(text)) return ['cocktails', 'bartenders'];
+	if (/(boba|bubble tea|milk tea|tapioca|珍珠)/.test(text))                           return ['boba', 'tea'];
+	if (/(smoothie|fruit blend|açaí|acai|blended)/.test(text))                         return ['Smoothies', 'juicing'];
+	if (/(mocktail|nonalcoholic|non-alcoholic|virgin|sober)/.test(text))               return ['Mocktails'];
+	if (/(kombucha|fermented|probiotic|kefir)/.test(text))                             return ['kombucha', 'tea'];
+	if (/(floral|herbal|botanical|lavender|rose|hibiscus|chamomile|elderflower)/.test(text)) return ['tea', 'herbalism'];
+	if (/(bitter|tonic|aperitif|amaro|digestif)/.test(text))                           return ['cocktails', 'tea'];
+	if (/(tea|oolong|jasmine|chai|earl grey|herbal|green tea|white tea)/.test(text))   return ['tea'];
+	if (/(lemonade|citrus|lemon|lime|grapefruit)/.test(text))                          return ['Mocktails', 'cocktails'];
+	if (/(juice|tropical|mango|berry|pineapple|peach|fruit)/.test(text))               return ['Smoothies', 'juicing'];
+	if (/(soda|sparkling|fizzy|tonic|shrub|carbonated)/.test(text))                    return ['Mocktails', 'cocktails'];
+	if (/(unusual|creative|unique|experimental|inspired)/.test(text))                  return ['tea', 'cocktails'];
+	return ['tea', 'cocktails'];
 }
