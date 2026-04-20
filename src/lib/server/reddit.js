@@ -15,6 +15,19 @@ export async function fetchSubredditPosts(fetchFn, subreddit, limit = 4, time = 
 	return posts.map((child) => child?.data).filter(Boolean);
 }
 
+export async function searchSubredditPosts(fetchFn, subreddit, query, limit = 4, time = 'month') {
+	const encoded = encodeURIComponent(query);
+	const url = `${REDDIT_BASE}/r/${subreddit}/search.json?q=${encoded}&sort=relevance&t=${time}&limit=${limit}&restrict_sr=1`;
+	const text = await redditGet(fetchFn, url);
+	const data = tryParseJson(text);
+	const posts = data?.data?.children;
+	if (!Array.isArray(posts) || posts.length === 0) {
+		// fall back to top posts if search returns nothing
+		return fetchSubredditPosts(fetchFn, subreddit, limit, time);
+	}
+	return posts.map((child) => child?.data).filter(Boolean);
+}
+
 export async function fetchPostWithComments(fetchFn, subreddit, postId, commentLimit = 5) {
 	const url = `${REDDIT_BASE}/r/${subreddit}/comments/${postId}.json?limit=${commentLimit}&depth=2`;
 	const text = await redditGet(fetchFn, url);

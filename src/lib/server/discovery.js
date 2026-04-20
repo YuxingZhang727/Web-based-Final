@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { fetchSubredditPosts, fetchPostWithComments, normalizePost } from '$lib/server/reddit';
+import { searchSubredditPosts, fetchPostWithComments, normalizePost } from '$lib/server/reddit';
 import { generateStructuredJson } from '$lib/server/llm';
 
 export async function collectSourceNotes(fetch, userQuery, searchPlan) {
@@ -9,13 +9,16 @@ export async function collectSourceNotes(fetch, userQuery, searchPlan) {
 		? searchPlan.subredditCandidates
 		: deriveFallbackSubreddits(userQuery, searchPlan.searchQueries);
 
-	// Fetch all subreddits in parallel
+	const searchQueries = Array.isArray(searchPlan.searchQueries) ? searchPlan.searchQueries : [];
+
+	// Fetch all subreddits in parallel, each with its own search query
 	const subredditResults = await Promise.allSettled(
-		subredditCandidates.slice(0, 2).map(async (subreddit) => {
-			const rawPosts = await fetchSubredditPosts(fetch, subreddit, 4, 'month');
+		subredditCandidates.slice(0, 2).map(async (subreddit, i) => {
+			const query = searchQueries[i] || searchQueries[0] || userQuery;
+			const rawPosts = await searchSubredditPosts(fetch, subreddit, query, 4, 'month');
 			const notes = rawPosts
 				.slice(0, 2)
-				.map((raw, i) => normalizePost(raw, i, userQuery, subreddit))
+				.map((raw, j) => normalizePost(raw, j, userQuery, subreddit))
 				.filter(Boolean);
 
 			// Fetch full post content + comments in parallel
