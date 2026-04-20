@@ -67,33 +67,30 @@ export async function analyzeSourceNotes(fetch, userQuery, resolvedQuery, source
 
 	const sourceAnalysis = await generateStructuredJson(
 		fetch,
-		`User request: ${userQuery}
-Source used: ${resolvedQuery}
+		`You are a drink recipe researcher. Analyze these Reddit posts and extract recipe inspiration.
 
-Source notes:
+User's request: "${userQuery}"
+Reddit source: ${resolvedQuery}
+
+Posts to analyze:
 ${sourceText}
 
-Task:
-1. Evaluate up to 4 Reddit posts and comment snippets.
-2. Decide whether each post is useful for recipe generation.
-3. If useful, extract one short recipe cue from it.
-4. Write one concise summary of the overall recipe direction based only on useful posts.
+Your tasks:
+1. For each post, decide if it offers ANY drink-related value — ingredients, flavor ideas, techniques, ratios, tips, or even just a mood or concept worth building on.
+2. Extract a short recipe cue from each useful post (a hint, not a full recipe).
+3. Write a brief summary of the overall drink direction these posts suggest.
 
-Rules:
-- A post is useful only if it contains concrete drink inspiration such as ingredients, flavor pairings, drink type, preparation clues, ratios, or helpful comment advice.
-- If a post is vague, aesthetic-only, or not recipe-relevant, mark it not useful.
-- Keep the summary concise and readable.
-- Keep the per-post reason concise.
-- Keep the recipe cue short, like a design hint, not a full recipe.
-- If none of the posts are useful, say that clearly in the summary.`,
+Be GENEROUS with "use_for_recipe": mark it true if the post gives even a single useful idea — a flavor combination, a base spirit/ingredient, a technique, or an interesting concept. Only mark false if the post is completely off-topic or contains no drink information at all.
+
+Return a JSON object matching this schema exactly:`,
 		`{
-  "summary": "string",
+  "summary": "string — one or two sentences describing the overall drink direction",
   "notes": [
     {
-      "id": "string",
+      "id": "string — must match the post Id exactly",
       "use_for_recipe": true,
-      "reason": "string",
-      "recipe_cue": "string"
+      "reason": "string — why this post is or isn't useful",
+      "recipe_cue": "string — short hint like 'add cold brew to sparkling water with citrus'"
     }
   ]
 }`
