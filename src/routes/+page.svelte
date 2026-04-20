@@ -523,6 +523,7 @@
 									<rect class="liquid-fill" x="-4" y="0" width="80" height="88" fill={drinkProfile.color} opacity="0.8" />
 								</g>
 								<rect x="16" y="10" width="40" height="64" rx="8" stroke="#2b241d" stroke-width="2.5" fill="none" />
+								<line x1="44" y1="2" x2="42" y2="40" stroke="#2b241d" stroke-width="3" stroke-linecap="round" />
 								<circle cx="28" cy="63" r="5" fill="#2a1a0e" />
 								<circle cx="36" cy="65" r="5" fill="#2a1a0e" />
 								<circle cx="44" cy="63" r="5" fill="#2a1a0e" />
