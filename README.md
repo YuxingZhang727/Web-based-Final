@@ -83,17 +83,8 @@ The research questions being explored:
 - The card stack shows faint ghost cards behind the active card to communicate that more content exists
 - Skeleton shimmer animation during post loading sets expectations before content arrives
 
-### Feedback Mechanisms
-
-- **Inline status labels** update in real time: `idle → loading → done / error`
-- **Stage progress pills** highlight the active stage and dim unreachable ones
-- **Error blocks** appear inline with contextual messages and retry actions
-- **The loading animation** changes shape and color based on what the AI detected (teacup for tea, martini glass for cocktails, tall cup with pearls for boba) — confirming that the system understood the user's intent
-- **Source cards in the recipe view** show which Reddit posts inspired each recipe, closing the feedback loop between input and output
-
-### Feedback Loops
-
-The three-stage pipeline creates an explicit feedback loop: users can return to the Posts stage after seeing recipes, browse different posts, and rebuild — encouraging iteration rather than a single linear pass.
+### Cybernetic Loop Diagram
+![image](diagram.png)
 
 ---
 
