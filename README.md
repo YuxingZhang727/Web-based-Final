@@ -49,6 +49,82 @@ The research questions being explored:
 
 ---
 
+## Cybernetic Systems Diagram
+
+Sip operates as a dynamic feedback system with three nested control loops. Each loop allows the user to sense a mismatch between their intent and the system's output, and correct course before committing to the next stage.
+
+```mermaid
+flowchart TD
+    DESIRE["🧠 User Desire\nMood · Flavor · Moment\n(environmental input)"]
+
+    subgraph LOOP1 ["Loop 1 — Query Calibration"]
+        direction TB
+        PROMPT["Natural Language\nPrompt"]
+        QI["AI Query Interpreter\nDeepSeek LLM\n→ keywords + subreddit"]
+        PREVIEW["Search Plan Preview\n(keywords & communities shown)"]
+        REFINE["User refines prompt\nif plan looks wrong"]
+    end
+
+    subgraph LOOP2 ["Loop 2 — Source Grounding"]
+        direction TB
+        SEARCH["Reddit Search API\n(subreddit + keywords)"]
+        POSTS["Community Posts\n+ Top Comments"]
+        BROWSE["User browses card stack\nreads real community context"]
+        RERUN["User re-fetches\nor edits request"]
+    end
+
+    subgraph LOOP3 ["Loop 3 — Recipe Refinement"]
+        direction TB
+        ANALYZE["Post Analysis\nDeepSeek LLM\n→ useful signal extraction"]
+        GENERATE["Recipe Generation\nDeepSeek LLM\n→ 3 distinct recipes"]
+        SELECT["User selects recipe\nor rejects all"]
+        BACK["User returns to Posts\nor Request stage"]
+    end
+
+    NOISE["⚠ Disturbances\nVague prompts · Rate limits\nSparse subreddits · LLM drift"]
+
+    DESIRE --> PROMPT
+    PROMPT --> QI
+    QI --> PREVIEW
+    PREVIEW -->|"plan looks wrong"| REFINE
+    REFINE -->|"updated prompt"| PROMPT
+    PREVIEW -->|"plan accepted"| SEARCH
+
+    NOISE -.->|"disrupts"| SEARCH
+    NOISE -.->|"disrupts"| QI
+
+    SEARCH --> POSTS
+    POSTS --> BROWSE
+    BROWSE -->|"posts irrelevant"| RERUN
+    RERUN -->|"triggers new search"| PROMPT
+    BROWSE -->|"posts accepted"| ANALYZE
+
+    ANALYZE --> GENERATE
+    GENERATE --> SELECT
+    SELECT -->|"recipes unsatisfying"| BACK
+    BACK -->|"stage navigation"| BROWSE
+    BACK -->|"stage navigation"| PROMPT
+    SELECT -->|"recipe chosen ✓"| OUTPUT["✅ Final Recipe\n(ingredients · steps · sources)"]
+
+    style LOOP1 fill:#fff8ed,stroke:#d4a84b,stroke-width:1.5px
+    style LOOP2 fill:#f0f7f0,stroke:#5a8a60,stroke-width:1.5px
+    style LOOP3 fill:#f0f0fa,stroke:#7060a0,stroke-width:1.5px
+    style NOISE fill:#fff0f0,stroke:#cc6060,stroke-dasharray:4
+    style OUTPUT fill:#e8f5e8,stroke:#3a7a55,stroke-width:2px
+```
+
+### How the loops operate
+
+| Loop | Trigger | Correction mechanism |
+|---|---|---|
+| **1 · Query Calibration** | User sees the AI's search plan before fetching posts | Rewrites prompt; AI re-interprets |
+| **2 · Source Grounding** | User browses Reddit posts and finds them irrelevant | Returns to Request stage; triggers a new search with a refined prompt |
+| **3 · Recipe Refinement** | User reads generated recipes and finds them off-target | Navigates back to Posts or Request; re-runs the pipeline |
+
+Each loop tightens the system's alignment with the user's actual intent. The interface makes every intermediate output visible — search terms, source posts, AI reasoning — so users can intervene at any point rather than waiting for a final result that may miss the mark entirely.
+
+---
+
 ## Human-Centered Design Analysis
 
 ### Affordances and Anti-Affordances
