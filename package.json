@@ -7,8 +7,7 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"preview": "vite preview",
-		"mcpo": "uvx mcpo --port 8000 --config ./mcp_config.json",
-		"prepare": "svelte-kit sync || echo ''",
+"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
@@ -23,7 +22,6 @@
 		"vite": "^8.0.7"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.29.0",
 		"zod": "^4.3.6"
 	}
 }
